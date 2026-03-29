@@ -36,23 +36,23 @@ ENV/
 # ── Django ────────────────────────────────────────────────────────────────────
 *.log
 local_settings.py
-db.sqlite3
+# db.sqlite3
 db.sqlite3-journal
-media/
+# media/
 staticfiles/
 static_root/
 
 # ── Celery ────────────────────────────────────────────────────────────────────
-celerybeat-schedule
-celerybeat.pid
+# celerybeat-schedule
+# celerybeat.pid
 
 # ── Vector DB / ChromaDB ──────────────────────────────────────────────────────
-chroma_db/
-*.chroma
-*.index
+# chroma_db/
+# *.chroma
+# *.index
 
 # ── Uploaded files ────────────────────────────────────────────────────────────
-knowledge_docs/
+# knowledge_docs/
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 .pytest_cache/
