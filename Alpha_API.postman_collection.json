@@ -1,0 +1,552 @@
+{
+  "info": {
+    "_postman_id": "alpha-ai-chatbot-collection-v1",
+    "name": "Alpha AI Chatbot — Full API Collection",
+    "description": "Complete API collection for the Alpha educational AI chatbot platform.\n\nBase URL: http://localhost:8000\n\nAuthentication: JWT Bearer Token\n- Obtain token via POST /api/token/\n- Add to every protected request as: Authorization: Bearer <access_token>\n\nAll UUIDs shown are examples — replace with real values from your responses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "PASTE_YOUR_ACCESS_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "PASTE_YOUR_REFRESH_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
+      "value": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "string"
+    },
+    {
+      "key": "exam_id",
+      "value": "7a7f91ab-b963-4499-9128-2af6c56f9cc6",
+      "type": "string"
+    },
+    {
+      "key": "doc_id",
+      "value": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐  Auth",
+      "item": [
+        {
+          "name": "Login — Obtain JWT Tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access)  pm.collectionVariables.set('access_token',  json.access);",
+                  "if (json.refresh) pm.collectionVariables.set('refresh_token', json.refresh);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"student1\",\n  \"password\": \"yourpassword\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", ""]
+            },
+            "description": "Returns access (1 hr) and refresh (7 days) JWT tokens.\n\nThe Test script auto-saves both tokens to collection variables."
+          },
+          "response": [
+            {
+              "name": "200 OK — Tokens issued",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"access\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzExMDAwMDAwLCJ1c2VyX2lkIjoxfQ.xxxx\",\n  \"refresh\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoicmVmcmVzaCIsImV4cCI6MTcxMTYwMDAwMCwidXNlcl9pZCI6MX0.yyyy\"\n}"
+            },
+            {
+              "name": "401 Unauthorized — Wrong credentials",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"detail\": \"No active account found with the given credentials\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Refresh Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access) pm.collectionVariables.set('access_token', json.access);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/token/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", "refresh", ""]
+            },
+            "description": "Exchange a refresh token for a new access token. Call this when the access token expires (after 1 hour)."
+          },
+          "response": [
+            {
+              "name": "200 OK — New access token",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"access\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access_token.xxxx\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Verify Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{access_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/token/verify/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "token", "verify", ""]
+            },
+            "description": "Verify if a token is still valid. Returns 200 if valid, 401 if expired or invalid."
+          },
+          "response": [
+            {
+              "name": "200 OK — Token valid",
+              "status": "OK",
+              "code": 200,
+              "body": "{}"
+            },
+            {
+              "name": "401 — Token expired",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"detail\": \"Token is invalid or expired\",\n  \"code\": \"token_not_valid\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "💬  Chat",
+      "item": [
+        {
+          "name": "Ask a Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"question\": \"who is the prime minister of India?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/ask/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "ask", ""]
+            },
+            "description": "Send a question to the AI chatbot.\n\n**session_id**: A UUID v4 string. Generate one on the frontend and reuse it for the entire conversation thread. Using the same session_id gives the AI access to conversation history (last 6 exchanges).\n\n**question**: Any academic, GK, geography, history, science, or general knowledge question.\n\nNon-academic / entertainment questions are automatically rejected.\n\nThe response includes:\n- `answer`: The AI-generated answer (Markdown formatted)\n- `sources`: Array of source labels (knowledge base doc titles or 'Alpha Academic Knowledge Base')\n- `tokens_used`: Token count for billing/monitoring"
+          },
+          "response": [
+            {
+              "name": "200 OK — Academic answer from knowledge base",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"answer\": \"## Prime Minister of India\\n\\nThe Prime Minister of India is **Narendra Modi**, who has been serving since May 2014...\\n\\n### Key Facts\\n- Leader of the Bharatiya Janata Party (BJP)\\n- Re-elected in 2019 and 2024\\n- Role: Head of Government; leads the Council of Ministers\\n\\n*(Source: Alpha Academic Knowledge Base)*\",\n  \"sources\": [\"Alpha Academic Knowledge Base\"],\n  \"tokens_used\": 245\n}"
+            },
+            {
+              "name": "200 OK — Non-academic question rejected",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"answer\": \"I can only help with academic and study-related questions. Please ask me something related to your syllabus, subjects, or education.\",\n  \"sources\": [],\n  \"tokens_used\": 0\n}"
+            },
+            {
+              "name": "200 OK — Follow-up question (with history context)",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"answer\": \"Building on what I explained earlier about photosynthesis, the light-dependent reactions occur in the thylakoid membranes...\\n\\n*(Source: Alpha Academic Knowledge Base)*\",\n  \"sources\": [\"Biology Textbook Ch. 5\"],\n  \"tokens_used\": 318\n}"
+            },
+            {
+              "name": "401 — Missing or invalid token",
+              "status": "Unauthorized",
+              "code": 401,
+              "body": "{\n  \"detail\": \"Authentication credentials were not provided.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List All Chat Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/chat/sessions/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "chat", "sessions", ""]
+            },
+            "description": "Returns all chat sessions for the authenticated user, ordered newest-first.\n\nUse this to build a sidebar/chat list showing all past conversations."
+          },
+          "response": [
+            {
+              "name": "200 OK — Session list",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"count\": 2,\n  \"sessions\": [\n    {\n      \"id\": \"550e8400-e29b-41d4-a716-446655440001\",\n      \"created_at\": \"2026-03-19T10:00:00Z\",\n      \"updated_at\": \"2026-03-19T10:25:00Z\",\n      \"message_count\": 5,\n      \"last_message\": \"Explain Newton's second law of motion\"\n    },\n    {\n      \"id\": \"660e8400-e29b-41d4-a716-446655440002\",\n      \"created_at\": \"2026-03-18T09:00:00Z\",\n      \"updated_at\": \"2026-03-18T09:40:00Z\",\n      \"message_count\": 3,\n      \"last_message\": \"What is photosynthesis?\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Full Chat History (by session)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/history/{{session_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "history", "{{session_id}}", ""]
+            },
+            "description": "Returns all messages for a specific session, ordered oldest-first (chronological).\n\nEach message has:\n- role: 'user' or 'assistant'\n- message: The question asked\n- response: The AI answer (null for user-role messages)\n- tokens_used: Only on assistant messages"
+          },
+          "response": [
+            {
+              "name": "200 OK — Full session history",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"session_id\": \"550e8400-e29b-41d4-a716-446655440001\",\n  \"created_at\": \"2026-03-19T10:00:00Z\",\n  \"updated_at\": \"2026-03-19T10:25:00Z\",\n  \"message_count\": 2,\n  \"messages\": [\n    {\n      \"id\": \"aaaa-1111-...\",\n      \"role\": \"user\",\n      \"message\": \"What is Newton's first law?\",\n      \"response\": null,\n      \"tokens_used\": null,\n      \"created_at\": \"2026-03-19T10:00:00Z\"\n    },\n    {\n      \"id\": \"bbbb-2222-...\",\n      \"role\": \"assistant\",\n      \"message\": \"What is Newton's first law?\",\n      \"response\": \"## Newton's First Law of Motion\\n\\nAlso called the **Law of Inertia**, it states that an object at rest stays at rest, and an object in motion stays in motion at the same speed and direction, unless acted upon by an unbalanced external force.\\n\\n### Why It Works\\nMatter resists changes to its state of motion — this property is called *inertia*...\\n\\n*(Source: Alpha Academic Knowledge Base)*\",\n      \"tokens_used\": 312,\n      \"created_at\": \"2026-03-19T10:00:05Z\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 — Session not found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"detail\": \"No ChatSession matches the given query.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🔬  Research & Thesis",
+      "item": [
+        {
+          "name": "Research Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"topic\": \"Climate Change\",\n  \"query\": \"What are the main causes and effects of climate change?\",\n  \"research_type\": \"overview\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/research/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "research", ""]
+            },
+            "description": "AI-assisted academic research and thesis writing support.\n\n**research_type** options:\n- `overview` — Broad introduction to the topic\n- `thesis` — Thesis statement + argument structure\n- `literature` — Literature review\n- `methodology` — Research methodology section\n- `analysis` — Data / findings analysis\n- `conclusion` — Conclusion and recommendations\n- `bibliography` — Suggested bibliography / references\n\nThe response is saved to the database and can be retrieved via the history endpoint."
+          },
+          "response": [
+            {
+              "name": "200 OK — Overview response",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": \"edcc0be1-a424-4d65-a32d-b578a12876a7\",\n  \"topic\": \"Climate Change\",\n  \"answer\": \"## Overview: Climate Change\\n\\n### Definition\\nClimate change refers to long-term shifts in global temperatures and weather patterns...\\n\\n### Main Causes\\n1. **Burning of fossil fuels** — CO₂ and CH₄ emissions\\n2. **Deforestation** — Reduces carbon sinks\\n3. **Industrial processes** — Cement, steel production\\n4. **Agriculture** — Methane from livestock\\n\\n### Key Effects\\n- Rising sea levels (1–2 mm/year)\\n- Increased frequency of extreme weather events\\n- Loss of biodiversity\\n- Food and water insecurity\\n\\n*(Source: Alpha Academic Knowledge Base)*\",\n  \"sources\": [\"Alpha Academic Knowledge Base\"],\n  \"tokens_used\": 1047,\n  \"created_at\": \"2026-03-19T10:30:00Z\"\n}"
+            },
+            {
+              "name": "200 OK — Thesis structure response",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": \"f1e2d3c4-a5b6-7890-abcd-ef1234567890\",\n  \"topic\": \"Machine Learning in Healthcare\",\n  \"answer\": \"## Thesis: Machine Learning in Healthcare\\n\\n### Proposed Thesis Statement\\n\\\"The integration of machine learning algorithms in diagnostic imaging has significantly improved early detection rates for cancer, warranting widespread adoption in clinical settings.\\\"\\n\\n### Argument Structure\\n1. **Introduction** — Current diagnostic limitations\\n2. **Literature Review** — Existing ML models in radiology\\n3. **Methodology** — Comparative analysis framework\\n4. **Analysis** — Accuracy metrics: ML vs. traditional\\n5. **Conclusion** — Policy recommendations\\n\",\n  \"sources\": [],\n  \"tokens_used\": 1173,\n  \"created_at\": \"2026-03-19T10:35:00Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Research History",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/research/history/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "research", "history", ""]
+            },
+            "description": "Returns the authenticated user's last 50 research queries, most recent first."
+          },
+          "response": [
+            {
+              "name": "200 OK — Research history",
+              "status": "OK",
+              "code": 200,
+              "body": "[\n  {\n    \"id\": \"edcc0be1-a424-4d65-a32d-b578a12876a7\",\n    \"topic\": \"Climate Change\",\n    \"query\": \"What are the main causes and effects of climate change?\",\n    \"response\": \"## Overview: Climate Change\\n\\n...\",\n    \"sources\": [\"Alpha Academic Knowledge Base\"],\n    \"tokens_used\": 1047,\n    \"created_at\": \"2026-03-19T10:30:00Z\"\n  },\n  {\n    \"id\": \"f1e2d3c4-a5b6-7890-abcd-ef1234567890\",\n    \"topic\": \"Machine Learning in Healthcare\",\n    \"query\": \"Help me build a thesis on ML in healthcare\",\n    \"response\": \"## Thesis: Machine Learning in Healthcare\\n...\",\n    \"sources\": [],\n    \"tokens_used\": 1173,\n    \"created_at\": \"2026-03-19T10:35:00Z\"\n  }\n]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📝  Mock Exam",
+      "item": [
+        {
+          "name": "Generate Mock Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Physics\",\n  \"topic\": \"Newton's Laws of Motion\",\n  \"difficulty\": \"medium\",\n  \"question_type\": \"mcq\",\n  \"num_questions\": 5,\n  \"time_limit_minutes\": 15\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/mock-exam/generate/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "mock-exam", "generate", ""]
+            },
+            "description": "Generate a personalised mock exam using AI and save it to the database.\n\n**difficulty**: `easy` | `medium` | `hard` | `mixed`\n**question_type**: `mcq` | `short_answer` | `true_false` | `mixed`\n**num_questions**: 1–30\n**time_limit_minutes**: Optional. If omitted, no timer is set.\n\nThe response includes the full exam with all questions, correct answers, and explanations."
+          },
+          "response": [
+            {
+              "name": "201 Created — MCQ exam generated",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"id\": \"7a7f91ab-b963-4499-9128-2af6c56f9cc6\",\n  \"subject\": \"Physics\",\n  \"topic\": \"Newton's Laws of Motion\",\n  \"difficulty\": \"medium\",\n  \"question_type\": \"mcq\",\n  \"num_questions\": 5,\n  \"time_limit_minutes\": 15,\n  \"instructions\": \"\",\n  \"tokens_used\": 731,\n  \"created_at\": \"2026-03-19T11:00:00Z\",\n  \"message\": \"Mock exam created with 5 questions.\",\n  \"questions\": [\n    {\n      \"id\": \"q1-uuid-...\",\n      \"question_number\": 1,\n      \"question_type\": \"mcq\",\n      \"question_text\": \"An object in motion will remain in motion unless acted upon by an external force. This is Newton's:\",\n      \"options\": [\"A. Second Law\", \"B. Third Law\", \"C. First Law\", \"D. Law of Gravitation\"],\n      \"correct_answer\": \"C. First Law\",\n      \"explanation\": \"Newton's First Law (Law of Inertia) states that an object continues in its state of rest or uniform motion unless compelled by an external force.\",\n      \"marks\": 1\n    },\n    {\n      \"id\": \"q2-uuid-...\",\n      \"question_number\": 2,\n      \"question_type\": \"mcq\",\n      \"question_text\": \"The formula F = ma represents which of Newton's laws?\",\n      \"options\": [\"A. First Law\", \"B. Second Law\", \"C. Third Law\", \"D. Law of Conservation\"],\n      \"correct_answer\": \"B. Second Law\",\n      \"explanation\": \"Newton's Second Law states force equals mass times acceleration (F = ma).\",\n      \"marks\": 1\n    }\n  ]\n}"
+            },
+            {
+              "name": "201 Created — Short answer exam",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"id\": \"8b8f92bc-c074-5500-a239-3bg7a02987d7\",\n  \"subject\": \"Chemistry\",\n  \"topic\": \"Periodic Table\",\n  \"difficulty\": \"easy\",\n  \"question_type\": \"short_answer\",\n  \"num_questions\": 3,\n  \"time_limit_minutes\": null,\n  \"instructions\": \"\",\n  \"tokens_used\": 448,\n  \"created_at\": \"2026-03-19T11:05:00Z\",\n  \"message\": \"Mock exam created with 3 questions.\",\n  \"questions\": [\n    {\n      \"id\": \"q1-uuid-...\",\n      \"question_number\": 1,\n      \"question_type\": \"short_answer\",\n      \"question_text\": \"What is the atomic number of Carbon?\",\n      \"options\": [],\n      \"correct_answer\": \"6\",\n      \"explanation\": \"Carbon (C) has 6 protons in its nucleus, giving it an atomic number of 6.\",\n      \"marks\": 2\n    }\n  ]\n}"
+            },
+            {
+              "name": "502 — AI generation failed",
+              "status": "Bad Gateway",
+              "code": 502,
+              "body": "{\n  \"error\": \"Could not generate exam questions. Please try again.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List My Mock Exams",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/mock-exam/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "mock-exam", ""]
+            },
+            "description": "Returns all mock exams created by the authenticated user. Lightweight — does NOT include questions. Use the detail endpoint to fetch questions."
+          },
+          "response": [
+            {
+              "name": "200 OK — Exam list",
+              "status": "OK",
+              "code": 200,
+              "body": "[\n  {\n    \"id\": \"7a7f91ab-b963-4499-9128-2af6c56f9cc6\",\n    \"subject\": \"Physics\",\n    \"topic\": \"Newton's Laws of Motion\",\n    \"difficulty\": \"medium\",\n    \"question_type\": \"mcq\",\n    \"num_questions\": 5,\n    \"time_limit_minutes\": 15,\n    \"created_at\": \"2026-03-19T11:00:00Z\",\n    \"question_count\": 5\n  },\n  {\n    \"id\": \"8b8f92bc-c074-5500-a239-3bg7a02987d7\",\n    \"subject\": \"Chemistry\",\n    \"topic\": \"Periodic Table\",\n    \"difficulty\": \"easy\",\n    \"question_type\": \"short_answer\",\n    \"num_questions\": 3,\n    \"time_limit_minutes\": null,\n    \"created_at\": \"2026-03-19T11:05:00Z\",\n    \"question_count\": 3\n  }\n]"
+            }
+          ]
+        },
+        {
+          "name": "Get Mock Exam Detail (with questions)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "mock-exam", "{{exam_id}}", ""]
+            },
+            "description": "Returns a specific mock exam with all questions, correct answers, and explanations."
+          },
+          "response": [
+            {
+              "name": "200 OK — Exam detail with all questions",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"id\": \"7a7f91ab-b963-4499-9128-2af6c56f9cc6\",\n  \"subject\": \"Physics\",\n  \"topic\": \"Newton's Laws of Motion\",\n  \"difficulty\": \"medium\",\n  \"question_type\": \"mcq\",\n  \"num_questions\": 5,\n  \"time_limit_minutes\": 15,\n  \"instructions\": \"\",\n  \"tokens_used\": 731,\n  \"created_at\": \"2026-03-19T11:00:00Z\",\n  \"questions\": [\n    {\n      \"id\": \"q1-uuid-...\",\n      \"question_number\": 1,\n      \"question_type\": \"mcq\",\n      \"question_text\": \"An object in motion will remain in motion unless acted upon by an external force. This is Newton's:\",\n      \"options\": [\"A. Second Law\", \"B. Third Law\", \"C. First Law\", \"D. Law of Gravitation\"],\n      \"correct_answer\": \"C. First Law\",\n      \"explanation\": \"Newton's First Law (Law of Inertia) states that an object continues in its state of rest or uniform motion unless compelled by an external force.\",\n      \"marks\": 1\n    },\n    {\n      \"id\": \"q2-uuid-...\",\n      \"question_number\": 2,\n      \"question_type\": \"mcq\",\n      \"question_text\": \"The formula F = ma represents which of Newton's laws?\",\n      \"options\": [\"A. First Law\", \"B. Second Law\", \"C. Third Law\", \"D. Law of Conservation\"],\n      \"correct_answer\": \"B. Second Law\",\n      \"explanation\": \"Newton's Second Law states force equals mass times acceleration (F = ma).\",\n      \"marks\": 1\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 — Exam not found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"detail\": \"No MockExam matches the given query.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Delete Mock Exam",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "mock-exam", "{{exam_id}}", ""]
+            },
+            "description": "Permanently deletes a mock exam (and all its questions) for the authenticated user."
+          },
+          "response": [
+            {
+              "name": "204 No Content — Deleted",
+              "status": "No Content",
+              "code": 204,
+              "body": ""
+            },
+            {
+              "name": "404 — Not found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"detail\": \"No MockExam matches the given query.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🛠️  Admin — Document Management",
+      "item": [
+        {
+          "name": "Upload Knowledge Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Physics Textbook Chapter 5",
+                  "type": "text"
+                },
+                {
+                  "key": "file_type",
+                  "value": "pdf",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/physics_chapter5.pdf",
+                  "description": "Actual file upload. Max 50MB. Extension must match file_type."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/upload-document/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "upload-document", ""]
+            },
+            "description": "⚠️ ADMIN ONLY — Requires Django admin/staff account.\n\nUploads a knowledge-base document. Processing (chunking + embedding) happens asynchronously via Celery.\n\nSupported file types: `pdf`, `txt`, `json`, `docx`\nMax file size: 50MB\n\nThe file_type field must match the actual file extension."
+          },
+          "response": [
+            {
+              "name": "201 Created — Upload queued",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"id\": \"d1e2f3a4-b5c6-7890-abcd-ef1234567890\",\n  \"status\": \"processing\"\n}"
+            },
+            {
+              "name": "400 — Validation error",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"file\": [\"File too large (max 50MB).\"]\n}"
+            },
+            {
+              "name": "403 — Not admin",
+              "status": "Forbidden",
+              "code": 403,
+              "body": "{\n  \"detail\": \"You do not have permission to perform this action.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reprocess Document (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chatbot/admin/reprocess/{{doc_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chatbot", "admin", "reprocess", "{{doc_id}}", ""]
+            },
+            "description": "⚠️ ADMIN ONLY — Re-queues embedding processing for a specific document. Useful when Celery was down during initial upload."
+          },
+          "response": [
+            {
+              "name": "200 OK — Reprocessing queued",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"reprocessing enqueued\",\n  \"id\": \"d1e2f3a4-b5c6-7890-abcd-ef1234567890\"\n}"
+            },
+            {
+              "name": "404 — Document not found",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{\n  \"error\": \"document not found\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
