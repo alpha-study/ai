@@ -84,8 +84,7 @@ const authHeaders = (token) => ({
 });
 ```
 
-> **CORS:** The backend must have your frontend origin whitelisted in `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`.  
-> For development: `http://localhost:3000` (React default)
+> **CORS:** The backend has `CORS_ALLOW_ALL_ORIGINS = True` — all frontend origins are accepted. No additional backend configuration needed during development or initial deployment.
 
 ---
 
@@ -969,5 +968,5 @@ Never use random strings — the backend validates UUID format strictly and retu
 
 ---
 
-*Alpha AI Chatbot — Frontend Developer Guide v1.0*  
-*Generated: March 19, 2026*
+*Alpha AI Chatbot — Frontend Developer Guide v1.1*  
+*Updated: April 8, 2026*
