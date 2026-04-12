@@ -2,6 +2,10 @@
 
 This workspace contains a Django app `ai_chatbot` implementing a Retrieval-Augmented Generation (RAG) chatbot for the Alpha educational platform.
 
+> **Database:** Shared MySQL (`alpha-api`) with the Node.js application.
+> Django exclusively owns tables prefixed with `ai_` and Django internal tables.
+> Node.js-owned tables are never touched by Django migrations.
+
 Quick setup (macOS / Linux):
 
 ```bash
@@ -9,9 +13,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# edit .env to add secrets (OPENAI_API_KEY etc)
-python manage.py migrate
+# edit .env — set DATABASE_PASSWORD, OPENAI_API_KEY, DJANGO_SECRET_KEY
+
+# ✅ Safe migrations — chatbot tables only
+python manage.py migrate ai_chatbot
+python manage.py migrate contenttypes
+python manage.py migrate auth
+python manage.py migrate admin
+python manage.py migrate sessions
+
+# Create a Django admin account for testing (separate from Node.js users)
 python manage.py createsuperuser
+
 python manage.py runserver
 ```
 
@@ -79,12 +92,14 @@ Recommended next steps:
 - Configure a vector DB (Chroma/Pinecone)
 - Upload sample documents via admin or the upload endpoint
 
+> **Schema export:** Run `python export_schema.py` to generate a full Markdown schema document for all 100+ tables in the shared MySQL database.
+
 Running tests:
 
 ```bash
 source .venv/bin/activate
 pip install -r requirements.txt
-python manage.py test
+python manage.py test ai_chatbot
 ```
 
 Docker / local deploy (dev):

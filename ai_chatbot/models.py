@@ -1,13 +1,48 @@
 import uuid
 from django.db import models
-from django.conf import settings
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXAMPLE: Unmanaged model mapped to an EXISTING Node.js-owned table.
+# Django will NEVER create, alter, or drop this table.
+# Adjust the field names / types to match the real schema exactly.
+# ─────────────────────────────────────────────────────────────────────────────
+class NodeUser(models.Model):
+    """Read-only mirror of the users table managed by Node.js.
+
+    Use this model ONLY for SELECT queries (e.g. display user info in admin).
+    Never write to this table from Django.
+    """
+    id = models.IntegerField(primary_key=True)
+    email = models.CharField(max_length=255)
+    name = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField()
+
+    class Meta:
+        managed = False          # ← Django will NOT run migrations on this table
+        db_table = 'users'       # ← exact table name in the Node.js database
+
+    def __str__(self):
+        return self.email
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHATBOT MODELS  (managed = True — Django owns these tables)
+# All tables use the  ai_  prefix to stay isolated from Node.js tables.
+# User references are plain IntegerField (no FK constraint to auth_user).
+# ─────────────────────────────────────────────────────────────────────────────
 
 class ChatSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    user_id = models.IntegerField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'ai_chat_session'
+
+    def __str__(self):
+        return f"ChatSession({self.id}) user={self.user_id}"
 
 
 class ChatMessage(models.Model):
@@ -20,6 +55,9 @@ class ChatMessage(models.Model):
     tokens_used = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        db_table = 'ai_chat_message'
+
 
 class KnowledgeDocument(models.Model):
     FILE_TYPES = (('pdf', 'pdf'), ('txt', 'txt'), ('json', 'json'), ('docx', 'docx'))
@@ -27,10 +65,13 @@ class KnowledgeDocument(models.Model):
     title = models.CharField(max_length=512)
     file = models.FileField(upload_to='knowledge_docs/')
     file_type = models.CharField(max_length=16, choices=FILE_TYPES)
-    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    uploaded_by_id = models.IntegerField(null=True, blank=True, db_index=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     processed = models.BooleanField(default=False)
     metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = 'ai_knowledge_document'
 
 
 class DocumentChunk(models.Model):
@@ -41,11 +82,14 @@ class DocumentChunk(models.Model):
     vector_id = models.CharField(max_length=256, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        db_table = 'ai_document_chunk'
+
 
 class ResearchQuery(models.Model):
     """Stores student research / thesis assistance queries and AI responses."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    user_id = models.IntegerField(null=True, blank=True, db_index=True)
     topic = models.CharField(max_length=512)
     query = models.TextField()
     response = models.TextField(blank=True, default='')
@@ -54,10 +98,11 @@ class ResearchQuery(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'ai_research_query'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"ResearchQuery({self.topic!r}) by {self.user}"
+        return f"ResearchQuery({self.topic!r}) user={self.user_id}"
 
 
 class MockExam(models.Model):
@@ -76,7 +121,7 @@ class MockExam(models.Model):
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    user_id = models.IntegerField(null=True, blank=True, db_index=True)
     subject = models.CharField(max_length=256)
     topic = models.CharField(max_length=512)
     difficulty = models.CharField(max_length=16, choices=DIFFICULTY_CHOICES, default='medium')
@@ -88,6 +133,7 @@ class MockExam(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'ai_mock_exam'
         ordering = ['-created_at']
 
     def __str__(self):
@@ -107,13 +153,13 @@ class MockExamQuestion(models.Model):
     question_number = models.PositiveIntegerField()
     question_type = models.CharField(max_length=16, choices=QUESTION_TYPE_CHOICES, default='mcq')
     question_text = models.TextField()
-    # For MCQ: stored as a JSON list of 4 strings e.g. ["A. ...", "B. ...", ...]
     options = models.JSONField(default=list, blank=True)
     correct_answer = models.TextField()
     explanation = models.TextField(blank=True, default='')
     marks = models.PositiveIntegerField(default=1)
 
     class Meta:
+        db_table = 'ai_mock_exam_question'
         ordering = ['question_number']
 
     def __str__(self):

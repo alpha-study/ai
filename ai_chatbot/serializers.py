@@ -30,6 +30,7 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
 
 
 class AskSerializer(serializers.Serializer):
+    user_id    = serializers.IntegerField(required=True, min_value=1)
     session_id = serializers.UUIDField(required=True)
     question   = serializers.CharField()
 
@@ -69,6 +70,7 @@ class ChatSessionSerializer(serializers.ModelSerializer):
 
 class ResearchQuerySerializer(serializers.Serializer):
     """Request body for the research assistant endpoint."""
+    user_id       = serializers.IntegerField(required=True, min_value=1)
     topic         = serializers.CharField(max_length=512, required=False, default='')
     query         = serializers.CharField()
     research_type = serializers.ChoiceField(
@@ -92,6 +94,7 @@ class ResearchQueryDetailSerializer(serializers.ModelSerializer):
 
 class MockExamRequestSerializer(serializers.Serializer):
     """Request body for generating a mock exam."""
+    user_id       = serializers.IntegerField(required=True, min_value=1)
     subject       = serializers.CharField(max_length=256)
     topic         = serializers.CharField(max_length=512)
     difficulty    = serializers.ChoiceField(
@@ -102,7 +105,7 @@ class MockExamRequestSerializer(serializers.Serializer):
         choices=['mcq', 'short_answer', 'true_false', 'mixed'],
         default='mcq', required=False,
     )
-    num_questions     = serializers.IntegerField(min_value=1, max_value=30, default=10, required=False)
+    num_questions      = serializers.IntegerField(min_value=1, max_value=30, default=10, required=False)
     time_limit_minutes = serializers.IntegerField(min_value=1, required=False, allow_null=True, default=None)
 
 

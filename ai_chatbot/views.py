@@ -1,8 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import permissions, status
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAdminUser, AllowAny
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 
@@ -23,20 +23,21 @@ class UploadDocumentView(APIView):
     def post(self, request):
         serializer = UploadDocumentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        doc = serializer.save(uploaded_by=request.user)
+        doc = serializer.save(uploaded_by_id=request.user.id)
         process_document.delay(str(doc.id))
         return Response({'id': doc.id, 'status': 'processing'}, status=status.HTTP_201_CREATED)
 
 
 class AskView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = AskSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        user_id    = serializer.validated_data['user_id']
         session_id = serializer.validated_data['session_id']
         question   = serializer.validated_data['question']
-        session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user': request.user})
+        session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user_id': user_id})
 
         # ── Build conversation history from prior turns in this session ──────
         # Fetch the last CONVERSATION_HISTORY_WINDOW assistant messages (each
@@ -67,14 +68,17 @@ class AskView(APIView):
 
 class ChatSessionListView(APIView):
     """
-    GET /api/chatbot/chat/sessions/
-    Returns all chat sessions for the authenticated user,
+    GET /api/chatbot/chat/sessions/?user_id=<int>
+    Returns all chat sessions for the given Node.js user_id,
     ordered by most recently updated, with message count and last message preview.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        sessions = ChatSession.objects.filter(user=request.user).order_by('-updated_at')
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        sessions = ChatSession.objects.filter(user_id=user_id).order_by('-updated_at')
         serializer = ChatSessionSerializer(sessions, many=True)
         return Response({
             'count':    sessions.count(),
@@ -84,14 +88,17 @@ class ChatSessionListView(APIView):
 
 class HistoryView(APIView):
     """
-    GET /api/chatbot/history/<session_id>/
+    GET /api/chatbot/history/<session_id>/?user_id=<int>
     Returns the full message history for a specific chat session.
-    Each item contains the user question and the assistant response together.
+    Requires user_id to scope the lookup to the correct owner.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, session_id):
-        session  = get_object_or_404(ChatSession, id=session_id, user=request.user)
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        session  = get_object_or_404(ChatSession, id=session_id, user_id=user_id)
         messages = session.messages.order_by('created_at')
         serializer = ChatMessageSerializer(messages, many=True)
         return Response({
@@ -133,7 +140,7 @@ class ResearchView(APIView):
     research_type choices:
         overview | thesis | literature | methodology | analysis | conclusion | bibliography
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = ResearchQuerySerializer(data=request.data)
@@ -148,7 +155,7 @@ class ResearchView(APIView):
 
         # Save the research query to the database
         rq = ResearchQuery.objects.create(
-            user=request.user,
+            user_id=data['user_id'],
             topic=data.get('topic', '') or data['query'][:80],
             query=data['query'],
             response=answer,
@@ -168,13 +175,16 @@ class ResearchView(APIView):
 
 class ResearchHistoryView(APIView):
     """
-    GET /api/chatbot/research/history/
-    Returns the authenticated user’s past research queries (most recent first).
+    GET /api/chatbot/research/history/?user_id=<int>
+    Returns the user's past research queries (most recent first).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        qs = ResearchQuery.objects.filter(user=request.user)[:50]
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        qs = ResearchQuery.objects.filter(user_id=user_id)[:50]
         serializer = ResearchQueryDetailSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -199,7 +209,7 @@ class GenerateMockExamView(APIView):
 
     Returns the full exam with all questions saved to the database.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = MockExamRequestSerializer(data=request.data)
@@ -223,7 +233,7 @@ class GenerateMockExamView(APIView):
 
         # Persist MockExam header
         exam = MockExam.objects.create(
-            user=request.user,
+            user_id=data['user_id'],
             subject=data['subject'],
             topic=data['topic'],
             difficulty=data.get('difficulty', 'medium'),
@@ -253,31 +263,40 @@ class GenerateMockExamView(APIView):
 
 class MockExamListView(APIView):
     """
-    GET /api/chatbot/mock-exam/
-    Returns all mock exams created by the authenticated user.
+    GET /api/chatbot/mock-exam/?user_id=<int>
+    Returns all mock exams created by the specified user.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
-        exams = MockExam.objects.filter(user=request.user)
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        exams = MockExam.objects.filter(user_id=user_id)
         serializer = MockExamListSerializer(exams, many=True)
         return Response(serializer.data)
 
 
 class MockExamDetailView(APIView):
     """
-    GET /api/chatbot/mock-exam/<uuid:exam_id>/
+    GET /api/chatbot/mock-exam/<uuid:exam_id>/?user_id=<int>
     Returns a specific mock exam with all questions.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, exam_id):
-        exam = get_object_or_404(MockExam, id=exam_id, user=request.user)
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        exam = get_object_or_404(MockExam, id=exam_id, user_id=user_id)
         serializer = MockExamDetailSerializer(exam)
         return Response(serializer.data)
 
     def delete(self, request, exam_id):
-        """Allow students to delete their own exams."""
-        exam = get_object_or_404(MockExam, id=exam_id, user=request.user)
+        """Allow users to delete their own exams."""
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        exam = get_object_or_404(MockExam, id=exam_id, user_id=user_id)
         exam.delete()
         return Response({'message': 'Exam deleted.'}, status=status.HTTP_204_NO_CONTENT)

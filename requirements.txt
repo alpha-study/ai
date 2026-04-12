@@ -59,6 +59,7 @@ markdown-it-py==4.0.0
 mdurl==0.1.2
 mmh3==5.2.1
 mpmath==1.3.0
+mysqlclient==2.2.7
 numpy==2.4.2
 oauthlib==3.3.1
 onnxruntime==1.23.2
@@ -86,6 +87,7 @@ pydantic_core==2.41.5
 Pygments==2.19.2
 PyJWT==2.11.0
 PyMuPDF==1.27.1
+PyMySQL==1.1.1
 pypdfium2==5.6.0
 PyPika==0.51.1
 pyproject_hooks==1.2.0

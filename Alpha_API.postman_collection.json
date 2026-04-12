@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "alpha-ai-chatbot-collection-v1",
     "name": "Alpha AI Chatbot — Full API Collection",
-    "description": "Complete API collection for the Alpha educational AI chatbot platform.\n\nBase URL: http://localhost:8000\n\nAuthentication: JWT Bearer Token\n- Obtain token via POST /api/token/\n- Add to every protected request as: Authorization: Bearer <access_token>\n\nAll UUIDs shown are examples — replace with real values from your responses.",
+    "description": "Complete API collection for the Alpha educational AI chatbot platform.\n\nBase URL: http://localhost:8000\n\n---\n\n## Database\nThis backend shares a **MySQL** database (`alpha-api`) with the Node.js application.\n- Django ONLY owns tables with the `ai_` prefix (e.g. `ai_chat_session`, `ai_mock_exam`).\n- All other tables (users, students, institutes, etc.) are owned by Node.js — Django never writes to them.\n- `user_id` stored in chatbot tables is the **Node.js user ID** (integer) — not a Django auth user ID.\n\n---\n\n## Authentication\n\n### Chatbot endpoints (ask, chat, research, mock-exam)\n❌ **No auth header required.**  \nPass the Node.js user’s integer ID directly:\n- POST bodies → include `\"user_id\": <int>` as a field\n- GET / DELETE → append `?user_id=<int>` as a query param\n\n### Admin endpoints (upload-document, admin/reprocess)\n✅ **JWT Bearer token required** (Django staff/admin account only).\n- Obtain via `POST /api/token/` — authenticates against Django's `auth_user` table.\n- Add header: `Authorization: Bearer <access_token>`\n- Access token expires in **1 hour**; refresh via `POST /api/token/refresh/`.\n\n> ⚠️ Django admin accounts are **separate** from Node.js users. Regular students do NOT have Django accounts and cannot use the JWT endpoints.\n\n---\n\nAll UUIDs shown in examples are sample values — replace with real values from your responses.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -35,6 +35,11 @@
       "key": "doc_id",
       "value": "d1e2f3a4-b5c6-7890-abcd-ef1234567890",
       "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "42",
+      "type": "string"
     }
   ],
   "item": [
@@ -59,19 +64,32 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"username\": \"student1\",\n  \"password\": \"yourpassword\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/token/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "token", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "token",
+                ""
+              ]
             },
-            "description": "Returns access (1 hr) and refresh (7 days) JWT tokens.\n\nThe Test script auto-saves both tokens to collection variables."
+            "description": "Returns access (1 hr) and refresh (7 days) JWT tokens.\n\nThe Test script auto-saves both tokens to collection variables.\n\n> ⚠️ This authenticates against Django's own `auth_user` table, NOT the Node.js `users` table.\n> Use `python manage.py createsuperuser` to create a Django admin account for testing.\n> In production, Django admin accounts are used for staff/admin access only."
           },
           "response": [
             {
@@ -105,17 +123,31 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/token/refresh/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "token", "refresh", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "token",
+                "refresh",
+                ""
+              ]
             },
             "description": "Exchange a refresh token for a new access token. Call this when the access token expires (after 1 hour)."
           },
@@ -133,17 +165,31 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"token\": \"{{access_token}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/token/verify/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "token", "verify", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "token",
+                "verify",
+                ""
+              ]
             },
             "description": "Verify if a token is still valid. Returns 200 if valid, 401 if expired or invalid."
           },
@@ -172,20 +218,33 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"question\": \"who is the prime minister of India?\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"user_id\": {{user_id}},\n  \"session_id\": \"{{session_id}}\",\n  \"question\": \"who is the prime minister of India?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/chatbot/ask/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "ask", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "ask",
+                ""
+              ]
             },
-            "description": "Send a question to the AI chatbot.\n\n**session_id**: A UUID v4 string. Generate one on the frontend and reuse it for the entire conversation thread. Using the same session_id gives the AI access to conversation history (last 6 exchanges).\n\n**question**: Any academic, GK, geography, history, science, or general knowledge question.\n\nNon-academic / entertainment questions are automatically rejected.\n\nThe response includes:\n- `answer`: The AI-generated answer (Markdown formatted)\n- `sources`: Array of source labels (knowledge base doc titles or 'Alpha Academic Knowledge Base')\n- `tokens_used`: Token count for billing/monitoring"
+            "description": "Send a question to the AI chatbot.\n\n**session_id**: A UUID v4 string. Generate one on the frontend and reuse it for the entire conversation thread. Using the same session_id gives the AI access to conversation history (last 6 exchanges).\n\n**question**: Any academic, GK, geography, history, science, or general knowledge question.\n\nNon-academic / entertainment questions are automatically rejected.\n\nThe response includes:\n- `answer`: The AI-generated answer (Markdown formatted)\n- `sources`: Array of source labels (knowledge base doc titles or 'Alpha Academic Knowledge Base')\n- `tokens_used`: Token count for billing/monitoring\n\n> **DB note:** Stored in `ai_chat_session` / `ai_chat_message` tables (MySQL). `user_id` is the Node.js user ID — no FK constraint."
           },
           "response": [
             {
@@ -207,10 +266,10 @@
               "body": "{\n  \"answer\": \"Building on what I explained earlier about photosynthesis, the light-dependent reactions occur in the thylakoid membranes...\\n\\n*(Source: Alpha Academic Knowledge Base)*\",\n  \"sources\": [\"Biology Textbook Ch. 5\"],\n  \"tokens_used\": 318\n}"
             },
             {
-              "name": "401 — Missing or invalid token",
-              "status": "Unauthorized",
-              "code": 401,
-              "body": "{\n  \"detail\": \"Authentication credentials were not provided.\"\n}"
+              "name": "400 — Missing user_id",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{\n  \"user_id\": [\"This field is required.\"]\n}"
             }
           ]
         },
@@ -218,15 +277,27 @@
           "name": "List All Chat Sessions",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/chat/sessions/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "chat", "sessions", ""]
+              "raw": "{{base_url}}/api/chatbot/chat/sessions/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "chat",
+                "sessions",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Returns all chat sessions for the authenticated user, ordered newest-first.\n\nUse this to build a sidebar/chat list showing all past conversations."
+            "description": "Returns all chat sessions for the given user_id (Node.js user), ordered newest-first.\n\nUse this to build a sidebar/chat list showing all past conversations.\n\n**Required query param:** `user_id` — the Node.js user's integer ID."
           },
           "response": [
             {
@@ -241,15 +312,27 @@
           "name": "Get Full Chat History (by session)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/history/{{session_id}}/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "history", "{{session_id}}", ""]
+              "raw": "{{base_url}}/api/chatbot/history/{{session_id}}/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "history",
+                "{{session_id}}",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Returns all messages for a specific session, ordered oldest-first (chronological).\n\nEach message has:\n- role: 'user' or 'assistant'\n- message: The question asked\n- response: The AI answer (null for user-role messages)\n- tokens_used: Only on assistant messages"
+            "description": "Returns all messages for a specific session, ordered oldest-first (chronological).\n\nEach message has:\n- role: 'user' or 'assistant'\n- message: The question asked\n- response: The AI answer (null for user-role messages)\n- tokens_used: Only on assistant messages\n\n**Required query param:** `user_id` — must match the owner of the session."
           },
           "response": [
             {
@@ -276,20 +359,33 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"topic\": \"Climate Change\",\n  \"query\": \"What are the main causes and effects of climate change?\",\n  \"research_type\": \"overview\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"user_id\": {{user_id}},\n  \"topic\": \"Climate Change\",\n  \"query\": \"What are the main causes and effects of climate change?\",\n  \"research_type\": \"overview\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/chatbot/research/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "research", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "research",
+                ""
+              ]
             },
-            "description": "AI-assisted academic research and thesis writing support.\n\n**research_type** options:\n- `overview` — Broad introduction to the topic\n- `thesis` — Thesis statement + argument structure\n- `literature` — Literature review\n- `methodology` — Research methodology section\n- `analysis` — Data / findings analysis\n- `conclusion` — Conclusion and recommendations\n- `bibliography` — Suggested bibliography / references\n\nThe response is saved to the database and can be retrieved via the history endpoint."
+            "description": "AI-assisted academic research and thesis writing support.\n\n**research_type** options:\n- `overview` — Broad introduction to the topic\n- `thesis` — Thesis statement + argument structure\n- `literature` — Literature review\n- `methodology` — Research methodology section\n- `analysis` — Data / findings analysis\n- `conclusion` — Conclusion and recommendations\n- `bibliography` — Suggested bibliography / references\n\nSaved to `ai_research_query` (MySQL). `user_id` is the Node.js user ID (integer)."
           },
           "response": [
             {
@@ -310,15 +406,27 @@
           "name": "Research History",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/research/history/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "research", "history", ""]
+              "raw": "{{base_url}}/api/chatbot/research/history/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "research",
+                "history",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Returns the authenticated user's last 50 research queries, most recent first."
+            "description": "Returns the user's last 50 research queries, most recent first.\n\n**Required query param:** `user_id` — the Node.js user's integer ID."
           },
           "response": [
             {
@@ -339,20 +447,34 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"subject\": \"Physics\",\n  \"topic\": \"Newton's Laws of Motion\",\n  \"difficulty\": \"medium\",\n  \"question_type\": \"mcq\",\n  \"num_questions\": 5,\n  \"time_limit_minutes\": 15\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"user_id\": {{user_id}},\n  \"subject\": \"Physics\",\n  \"topic\": \"Newton's Laws of Motion\",\n  \"difficulty\": \"medium\",\n  \"question_type\": \"mcq\",\n  \"num_questions\": 5,\n  \"time_limit_minutes\": 15\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{base_url}}/api/chatbot/mock-exam/generate/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "mock-exam", "generate", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "mock-exam",
+                "generate",
+                ""
+              ]
             },
-            "description": "Generate a personalised mock exam using AI and save it to the database.\n\n**difficulty**: `easy` | `medium` | `hard` | `mixed`\n**question_type**: `mcq` | `short_answer` | `true_false` | `mixed`\n**num_questions**: 1–30\n**time_limit_minutes**: Optional. If omitted, no timer is set.\n\nThe response includes the full exam with all questions, correct answers, and explanations."
+            "description": "Generate a personalised mock exam using AI and save it to the database.\n\n**difficulty**: `easy` | `medium` | `hard` | `mixed`\n**question_type**: `mcq` | `short_answer` | `true_false` | `mixed`\n**num_questions**: 1–30\n**time_limit_minutes**: Optional. If omitted, no timer is set.\n\nThe response includes the full exam with all questions, correct answers, and explanations.\n\n> **DB note:** Saved to `ai_mock_exam` + `ai_mock_exam_question` tables (MySQL). `user_id` is the Node.js user ID (integer)."
           },
           "response": [
             {
@@ -379,15 +501,26 @@
           "name": "List My Mock Exams",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/mock-exam/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "mock-exam", ""]
+              "raw": "{{base_url}}/api/chatbot/mock-exam/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "mock-exam",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Returns all mock exams created by the authenticated user. Lightweight — does NOT include questions. Use the detail endpoint to fetch questions."
+            "description": "Returns all mock exams for the given user. Lightweight — does NOT include questions. Use the detail endpoint to fetch questions.\n\n**Required query param:** `user_id` — the Node.js user's integer ID."
           },
           "response": [
             {
@@ -402,15 +535,27 @@
           "name": "Get Mock Exam Detail (with questions)",
           "request": {
             "method": "GET",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "mock-exam", "{{exam_id}}", ""]
+              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "mock-exam",
+                "{{exam_id}}",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Returns a specific mock exam with all questions, correct answers, and explanations."
+            "description": "Returns a specific mock exam with all questions, correct answers, and explanations.\n\n**Required query param:** `user_id` — must match the exam owner."
           },
           "response": [
             {
@@ -431,15 +576,27 @@
           "name": "Delete Mock Exam",
           "request": {
             "method": "DELETE",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
-            ],
+            "header": [],
             "url": {
-              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "mock-exam", "{{exam_id}}", ""]
+              "raw": "{{base_url}}/api/chatbot/mock-exam/{{exam_id}}/?user_id={{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "mock-exam",
+                "{{exam_id}}",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
             },
-            "description": "Permanently deletes a mock exam (and all its questions) for the authenticated user."
+            "description": "Permanently deletes a mock exam (and all its questions). Only the owner can delete.\n\n**Required query param:** `user_id` — must match the exam owner."
           },
           "response": [
             {
@@ -466,7 +623,10 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "body": {
               "mode": "formdata",
@@ -491,10 +651,17 @@
             },
             "url": {
               "raw": "{{base_url}}/api/chatbot/upload-document/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "upload-document", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "upload-document",
+                ""
+              ]
             },
-            "description": "⚠️ ADMIN ONLY — Requires Django admin/staff account.\n\nUploads a knowledge-base document. Processing (chunking + embedding) happens asynchronously via Celery.\n\nSupported file types: `pdf`, `txt`, `json`, `docx`\nMax file size: 50MB\n\nThe file_type field must match the actual file extension."
+            "description": "⚠️ ADMIN ONLY — Requires Django admin/staff account (`is_staff=True`).\n\nUploads a knowledge-base document. Processing (chunking + embedding) happens asynchronously via Celery.\n\nSupported file types: `pdf`, `txt`, `json`, `docx`\nMax file size: 50MB\n\nThe file_type field must match the actual file extension.\n\n> **DB note:** Metadata saved to `ai_knowledge_document`; text chunks to `ai_document_chunk`. Both are Django-owned tables in the shared MySQL database."
           },
           "response": [
             {
@@ -522,12 +689,24 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": {
               "raw": "{{base_url}}/api/chatbot/admin/reprocess/{{doc_id}}/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chatbot", "admin", "reprocess", "{{doc_id}}", ""]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "chatbot",
+                "admin",
+                "reprocess",
+                "{{doc_id}}",
+                ""
+              ]
             },
             "description": "⚠️ ADMIN ONLY — Re-queues embedding processing for a specific document. Useful when Celery was down during initial upload."
           },

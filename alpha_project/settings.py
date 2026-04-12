@@ -56,10 +56,23 @@ WSGI_APPLICATION = 'alpha_project.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ.get('DATABASE_NAME', 'alpha-api'),
+        'USER': os.environ.get('DATABASE_USER', 'alpha-api'),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+        'HOST': os.environ.get('DATABASE_HOST', '194.164.148.150'),
+        'PORT': os.environ.get('DATABASE_PORT', '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'connect_timeout': 10,
+        },
     }
 }
+
+# ── Database Router ──────────────────────────────────────────────────────────
+# Prevents Django from running migrations on existing Node.js-managed tables.
+DATABASE_ROUTERS = ['ai_chatbot.db_router.ChatbotRouter']
 
 AUTH_PASSWORD_VALIDATORS = []
 

@@ -4,7 +4,7 @@ from .models import ChatSession, ChatMessage, KnowledgeDocument, DocumentChunk, 
 
 @admin.register(ChatSession)
 class ChatSessionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'created_at')
+    list_display = ('id', 'user_id', 'created_at')
 
 
 @admin.register(ChatMessage)
@@ -14,7 +14,7 @@ class ChatMessageAdmin(admin.ModelAdmin):
 
 @admin.register(KnowledgeDocument)
 class KnowledgeDocumentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'title', 'uploaded_by', 'uploaded_at', 'processed')
+    list_display = ('id', 'title', 'uploaded_by_id', 'uploaded_at', 'processed')
     actions = ['reprocess']
 
     def reprocess(self, request, queryset):
@@ -30,10 +30,10 @@ class DocumentChunkAdmin(admin.ModelAdmin):
 
 @admin.register(ResearchQuery)
 class ResearchQueryAdmin(admin.ModelAdmin):
-    list_display  = ('id', 'user', 'topic', 'tokens_used', 'created_at')
+    list_display  = ('id', 'user_id', 'topic', 'tokens_used', 'created_at')
     list_filter   = ('created_at',)
     search_fields = ('topic', 'query')
-    readonly_fields = ('id', 'user', 'topic', 'query', 'response', 'sources', 'tokens_used', 'created_at')
+    readonly_fields = ('id', 'user_id', 'topic', 'query', 'response', 'sources', 'tokens_used', 'created_at')
 
 
 class MockExamQuestionInline(admin.TabularInline):
@@ -45,10 +45,10 @@ class MockExamQuestionInline(admin.TabularInline):
 
 @admin.register(MockExam)
 class MockExamAdmin(admin.ModelAdmin):
-    list_display  = ('id', 'user', 'subject', 'topic', 'difficulty', 'question_type', 'num_questions', 'created_at')
+    list_display  = ('id', 'user_id', 'subject', 'topic', 'difficulty', 'question_type', 'num_questions', 'created_at')
     list_filter   = ('difficulty', 'question_type', 'created_at')
     search_fields = ('subject', 'topic')
-    readonly_fields = ('id', 'user', 'tokens_used', 'created_at')
+    readonly_fields = ('id', 'user_id', 'tokens_used', 'created_at')
     inlines       = [MockExamQuestionInline]
 
 

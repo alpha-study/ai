@@ -66,7 +66,19 @@ Complete step-by-step guide for setting up the Alpha AI Chatbot development envi
    # Download from https://git-scm.com/downloads
    ```
 
-4. **OpenAI API Account**
+4. **MySQL Client Library**
+   ```bash
+   # macOS (using Homebrew — needed to compile mysqlclient)
+   brew install pkg-config mysqlclient
+
+   # Ubuntu/Debian
+   sudo apt install default-libmysqlclient-dev build-essential pkg-config
+
+   # Windows
+   # Use PyMySQL (pure Python) — no system library needed; see Configuration section
+   ```
+
+5. **OpenAI API Account**
    - Sign up at https://platform.openai.com/
    - Generate an API key from https://platform.openai.com/api-keys
    - Store it securely (you'll need it for configuration)
@@ -152,10 +164,12 @@ pip install -r requirements.txt
 Django==6.0.3
 djangorestframework==3.16.1
 djangorestframework-simplejwt==5.5.1
+mysqlclient==2.2.7        # Primary MySQL driver
+PyMySQL==1.1.2            # Fallback (pure Python, no system library needed)
 celery==5.6.2
 redis==7.3.0
 python-dotenv==1.0.1
-openai==1.62.0
+openai==2.26.0
 chromadb==1.5.2
 langchain==1.2.10
 pdfplumber==0.11.4
@@ -195,12 +209,18 @@ Edit `.env` and add the following:
 
 ```bash
 # Django Settings
-SECRET_KEY=your-super-secret-django-key-here-change-this-in-production
-DEBUG=True
+DJANGO_SECRET_KEY=your-super-secret-django-key-here-change-this-in-production
+DJANGO_DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Database (SQLite for development)
-DATABASE_URL=sqlite:///db.sqlite3
+# ── MySQL Database ────────────────────────────────────────────────────────────
+# Shared with Node.js. Django ONLY creates its own ai_* tables.
+# NEVER run broad migrations that could touch Node.js-owned tables.
+DATABASE_NAME=alpha-api
+DATABASE_USER=alpha-api
+DATABASE_PASSWORD=your-db-password-here
+DATABASE_HOST=194.164.148.150
+DATABASE_PORT=3306
 
 # Redis Configuration
 CELERY_BROKER_URL=redis://localhost:6379/0
@@ -214,10 +234,6 @@ AI_MAX_RESPONSE_TOKENS=512
 
 # Chroma Vector Database
 CHROMA_DB_PATH=./chroma_db
-
-# File Upload Settings
-MAX_UPLOAD_SIZE=52428800  # 50MB in bytes
-ALLOWED_DOCUMENT_TYPES=pdf,txt,json,docx
 ```
 
 ### 3. Generate Django Secret Key
@@ -240,46 +256,96 @@ python manage.py shell -c "from django.conf import settings; print(f'Debug: {set
 
 ## Database Setup
 
-### 1. Run Initial Migrations
+> ⚠️ **CRITICAL:** This Django app shares a **MySQL** database with a live Node.js application.
+> Django must **never** create, alter, or drop tables owned by Node.js.
+> Always scope migration commands to the `ai_chatbot` app only.
+
+### 1. Verify MySQL Connectivity
 
 ```bash
-# Create database tables
-python manage.py makemigrations
-python manage.py migrate
-
-# You should see output like:
-# Running migrations:
-#   Applying contenttypes.0001_initial... OK
-#   Applying auth.0001_initial... OK
-#   ...
-#   Applying ai_chatbot.0001_initial... OK
+python -c "
+import pymysql, os
+from dotenv import load_dotenv
+load_dotenv()
+conn = pymysql.connect(
+    host=os.environ['DATABASE_HOST'],
+    port=int(os.environ['DATABASE_PORT']),
+    user=os.environ['DATABASE_USER'],
+    password=os.environ['DATABASE_PASSWORD'],
+    database=os.environ['DATABASE_NAME'],
+)
+print('✅ MySQL connection successful')
+conn.close()
+"
 ```
 
-### 2. Create Superuser
+### 2. Run Migrations (Safe — chatbot tables only)
 
 ```bash
-# Create admin account for Django admin panel
+# ✅ SAFE — creates only ai_* tables
+python manage.py migrate ai_chatbot
+
+# ✅ SAFE — Django system tables (contenttypes, auth, admin, sessions)
+python manage.py migrate contenttypes
+python manage.py migrate auth
+python manage.py migrate admin
+python manage.py migrate sessions
+
+# ❌ NEVER run this — it may attempt migrations on Node.js-owned tables
+# python manage.py migrate
+# python manage.py makemigrations
+```
+
+### 3. Create Superuser (Django admin only)
+
+```bash
+# Creates a Django admin account (stored in auth_user table).
+# This is separate from Node.js users — used for Django admin panel + API testing.
 python manage.py createsuperuser
 
 # Enter details when prompted:
 # Username: admin
 # Email: admin@example.com
 # Password: (choose a strong password)
-# Password (again): (confirm password)
 ```
 
-### 3. Verify Database
+### 4. Verify Database
 
 ```bash
-# Check database tables
-python manage.py dbshell
-# SQLite will open, then run:
-.tables
-# Should show: auth_*, django_*, ai_chatbot_*
-.exit
+# Check that ai_* tables were created
+python -c "
+import pymysql, os
+from dotenv import load_dotenv
+load_dotenv()
+conn = pymysql.connect(
+    host=os.environ['DATABASE_HOST'],
+    port=int(os.environ['DATABASE_PORT']),
+    user=os.environ['DATABASE_USER'],
+    password=os.environ['DATABASE_PASSWORD'],
+    database=os.environ['DATABASE_NAME'],
+    charset='utf8mb4',
+)
+with conn.cursor() as c:
+    c.execute(\"SHOW TABLES LIKE 'ai_%%'\")
+    tables = [r[0] for r in c.fetchall()]
+    print(f'Django chatbot tables ({len(tables)}):')
+    for t in tables: print(f'  ✅ {t}')
+conn.close()
+"
+# Expected: 7 tables (ai_chat_session, ai_chat_message, ai_knowledge_document,
+#           ai_document_chunk, ai_research_query, ai_mock_exam, ai_mock_exam_question)
+```
 
-# Or use Python:
-python manage.py shell -c "from django.contrib.auth.models import User; print(f'Users: {User.objects.count()}')"
+### 5. Generate Schema Documentation (optional)
+
+```bash
+# Export full schema of all 100+ tables to a Markdown file
+python export_schema.py
+
+# Export only Django-owned chatbot tables
+python export_schema.py --filter ai_
+
+# Output file: schema_alpha-api_<YYYYMMDD_HHMM>.md
 ```
 
 ---
@@ -363,14 +429,18 @@ curl http://localhost:8000/admin/
 ### 1. Access Django Admin
 
 1. Open browser: http://localhost:8000/admin/
-2. Login with superuser credentials
+2. Login with the superuser credentials you created
 3. You should see:
-   - Users
-   - Groups
-   - Chat Sessions
-   - Chat Messages
-   - Knowledge Documents
-   - Document Chunks
+   - Users / Groups (Django auth)
+   - Chat Sessions (`ai_chat_session`)
+   - Chat Messages (`ai_chat_message`)
+   - Knowledge Documents (`ai_knowledge_document`)
+   - Document Chunks (`ai_document_chunk`)
+   - Research Queries (`ai_research_query`)
+   - Mock Exams (`ai_mock_exam`)
+   - Mock Exam Questions (`ai_mock_exam_question`)
+
+> ℹ️ Django admin shows only `ai_*` table records. Node.js-owned tables (users, students, institutes, etc.) are NOT visible here.
 
 ### 2. Get JWT Token
 
@@ -526,17 +596,61 @@ pip install -r requirements.txt
 pip list | grep xxx
 ```
 
-#### 6. **Database Locked Error**
+#### 6. **MySQL Connection Error**
 
-**Error**: `django.db.utils.OperationalError: database is locked`
+**Error**: `(2003, "Can't connect to MySQL server on '194.164.148.150'")`
 
 **Solution**:
 ```bash
-# SQLite doesn't handle concurrent writes well
-# Option 1: Wait a moment and retry
-# Option 2: Close all Django shells and management commands
-# Option 3: For production, use PostgreSQL (see AWS deployment guide)
+# Check network connectivity
+ping 194.164.148.150
+
+# Verify credentials in .env
+cat .env | grep DATABASE_
+
+# Test direct PyMySQL connection
+python -c "
+import pymysql
+conn = pymysql.connect(host='194.164.148.150', port=3306,
+    user='alpha-api', password='YOUR_PASSWORD', database='alpha-api')
+print('connected:', conn.get_server_info())
+conn.close()
+"
 ```
+
+#### 7. **MySQL Authentication Error**
+
+**Error**: `(2059, "Authentication plugin 'mysql_native_password' cannot be loaded")`
+
+**Solution**: This happens when the system mysqlclient is compiled against MySQL 9.x.
+PyMySQL handles this automatically (it's configured in `alpha_project/__init__.py`).
+If you see this error, ensure `alpha_project/__init__.py` has:
+```python
+import pymysql
+pymysql.version_info = (2, 2, 7, 'final', 0)
+pymysql.install_as_MySQLdb()
+```
+
+#### 8. **Accidental Migration on Node.js Tables**
+
+**Error**: Django tries to create or alter a table that already exists in MySQL.
+
+**Prevention**:
+```bash
+# ALWAYS use the app name with makemigrations
+python manage.py makemigrations ai_chatbot   # ✅ safe
+
+# NEVER run without app name
+python manage.py makemigrations               # ❌ dangerous
+
+# The database router (ai_chatbot/db_router.py) blocks migrations
+# on all apps except ai_chatbot and Django internals.
+```
+
+#### 9. **Database Locked Error** *(was SQLite-specific — no longer applicable)*
+
+The project now uses MySQL which handles concurrent access natively.
+MySQL supports multiple simultaneous connections from both Django and Node.js without locking issues.
 
 #### 7. **File Upload Error**
 
@@ -588,9 +702,13 @@ MAX_UPLOAD_SIZE=104857600  # 100MB
 
 4. **Database Changes**
    ```bash
-   # When models are modified:
-   python manage.py makemigrations
-   python manage.py migrate
+   # When chatbot models are modified:
+   python manage.py makemigrations ai_chatbot   # ← always specify the app
+   python manage.py migrate ai_chatbot
+
+   # ❌ NEVER run without app name — protects Node.js-owned tables
+   # python manage.py makemigrations
+   # python manage.py migrate
    ```
 
 5. **End Development Session**

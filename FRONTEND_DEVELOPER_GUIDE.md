@@ -2,7 +2,7 @@
 
 > **Platform:** Alpha Educational AI Chatbot  
 > **Backend:** Django 6 + Django REST Framework  
-> **Auth:** JWT (SimpleJWT)  
+> **Auth:** JWT only for admin endpoints — chatbot endpoints use `user_id` param (no token needed)  
 > **Base URL (dev):** `http://localhost:8000`  
 > **Base URL (prod):** `https://your-production-domain.com`
 
@@ -35,15 +35,16 @@
 
 ## 1. Authentication Flow
 
-The backend uses **JWT (JSON Web Token)** authentication — no session cookies.
+> **Important:** JWT is only required for **admin endpoints** (document upload/reprocess).  
+> All chatbot endpoints (ask, chat, research, mock-exam) are **auth-free** — they identify the user via `user_id` (the Node.js user's integer ID), passed in the request body (POST) or as a query param (GET/DELETE).
 
-### Flow Diagram
+### Admin-only JWT Flow
 
 ```
-User submits login form
+Admin submits login form
         │
         ▼
-POST /api/token/  {username, password}
+POST /api/token/  {username, password}   ← Django staff account only
         │
         ▼
 Server returns { access, refresh }
@@ -52,17 +53,25 @@ Server returns { access, refresh }
         └── Store refresh token (localStorage — expires in 7 days)
         │
         ▼
-Attach to every API call:
+Attach to admin/document calls only:
   Authorization: Bearer <access_token>
         │
         ▼
 On 401 response → POST /api/token/refresh/ → get new access token
-        │
-        ▼
-If refresh also fails → redirect to login
 ```
 
-### Token Lifetimes
+### Chatbot Endpoints — No Auth Needed
+
+```
+Node.js provides user_id to frontend (e.g. from its own JWT payload)
+        │
+        ▼
+POST endpoints → include in request body:  { "user_id": 42, ... }
+GET endpoints  → append as query param:    ?user_id=42
+DELETE         → append as query param:    ?user_id=42
+```
+
+### Token Lifetimes (admin only)
 
 | Token   | Lifetime | Storage recommendation |
 |---------|----------|------------------------|
@@ -77,8 +86,11 @@ If refresh also fails → redirect to login
 // config/api.js
 export const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-// Every authenticated request must include:
-const authHeaders = (token) => ({
+// Chatbot endpoints — no auth, just JSON:
+const chatHeaders = () => ({ 'Content-Type': 'application/json' });
+
+// Admin endpoints (upload-document, admin/reprocess) — JWT required:
+const adminHeaders = (token) => ({
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${token}`,
 });
@@ -98,10 +110,14 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: BASE_URL });
 
-// Attach access token to every request
+// Attach access token only to admin routes
+const ADMIN_PATHS = ['/api/token', '/api/chatbot/upload-document', '/api/chatbot/admin'];
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const isAdminRoute = ADMIN_PATHS.some(p => config.url?.startsWith(p));
+  if (isAdminRoute) {
+    const token = sessionStorage.getItem('access_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -181,10 +197,12 @@ Response 401:  { detail, code: "token_not_valid" }
 ### 4.2 Chat
 
 #### `POST /api/chatbot/ask/` — Send a message  
-**Auth required:** ✅ Bearer token
+**Auth required:** ❌ No token needed
 
 ```
 Body:
+  user_id     integer      required
+              → The Node.js user's integer ID.
   session_id  UUID/string  required
               → Generate a UUID v4 on the frontend. Reuse the same
                 ID for all messages in one conversation.
@@ -207,9 +225,12 @@ Response 200 (rejected — non-academic):
 ---
 
 #### `GET /api/chatbot/chat/sessions/` — List sessions  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
+Query param:
+  user_id  integer  required  → The Node.js user's integer ID.
+
 Response 200:
   count     number
   sessions  ChatSession[]
@@ -225,11 +246,13 @@ ChatSession:
 ---
 
 #### `GET /api/chatbot/history/{session_id}/` — Full session history  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
 URL param:
   session_id  UUID
+Query param:
+  user_id     integer  required  → Must match the session owner.
 
 Response 200:
   session_id     string
@@ -257,10 +280,11 @@ Response 404:
 ### 4.3 Research & Thesis
 
 #### `POST /api/chatbot/research/` — Research query  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
 Body:
+  user_id        integer required
   topic          string  optional  (e.g. "Climate Change" — max 512 chars)
   query          string  required  (detailed question)
   research_type  string  optional  default: "overview"
@@ -291,9 +315,12 @@ Response 200:
 ---
 
 #### `GET /api/chatbot/research/history/` — Research history  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
+Query param:
+  user_id  integer  required  → The Node.js user's integer ID.
+
 Response 200:  ResearchQuery[]  (last 50, newest first)
 
 ResearchQuery:
@@ -311,10 +338,11 @@ ResearchQuery:
 ### 4.4 Mock Exam
 
 #### `POST /api/chatbot/mock-exam/generate/` — Generate exam  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
 Body:
+  user_id             integer required
   subject             string  required   (e.g. "Physics")
   topic               string  required   (e.g. "Newton's Laws of Motion")
   difficulty          string  optional   default: "medium"
@@ -359,9 +387,12 @@ marks            number        (usually 1)
 ---
 
 #### `GET /api/chatbot/mock-exam/` — List exams  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
+Query param:
+  user_id  integer  required  → The Node.js user's integer ID.
+
 Response 200:  MockExamListItem[]  (newest first)
 
 MockExamListItem:
@@ -379,10 +410,11 @@ MockExamListItem:
 ---
 
 #### `GET /api/chatbot/mock-exam/{exam_id}/` — Exam detail with questions  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
-URL param: exam_id (UUID)
+URL param:   exam_id (UUID)
+Query param: user_id  integer  required  → Must match the exam owner.
 Response 200:  MockExam + questions[]   (same schema as generate response, minus `message`)
 Response 404:  { detail: "No MockExam matches the given query." }
 ```
@@ -390,9 +422,11 @@ Response 404:  { detail: "No MockExam matches the given query." }
 ---
 
 #### `DELETE /api/chatbot/mock-exam/{exam_id}/` — Delete exam  
-**Auth required:** ✅
+**Auth required:** ❌ No token needed
 
 ```
+URL param:   exam_id (UUID)
+Query param: user_id  integer  required  → Must match the exam owner.
 Response 204:  (empty body)
 Response 404:  { detail: "No MockExam matches the given query." }
 ```
@@ -624,6 +658,7 @@ export function useChat() {
 
     try {
       const { data } = await api.post('/api/chatbot/ask/', {
+        user_id: userId,   // Node.js user ID — obtain from your auth context
         session_id: sessionId,
         question,
       });
@@ -656,12 +691,15 @@ export function useChat() {
 
 ```typescript
 // Load all past sessions
-const { data } = await api.get<ChatSessionList>('/api/chatbot/chat/sessions/');
+const { data } = await api.get<ChatSessionList>('/api/chatbot/chat/sessions/', {
+  params: { user_id: userId },
+});
 // data.sessions is ordered newest-first
 
 // When user clicks a session, load its full history
 const { data: history } = await api.get<ChatHistoryResponse>(
-  `/api/chatbot/history/${sessionId}/`
+  `/api/chatbot/history/${sessionId}/`,
+  { params: { user_id: userId } },
 );
 
 // Render messages:
@@ -686,6 +724,7 @@ history.messages.forEach(msg => {
 ```typescript
 // api/research.ts
 export async function submitResearch(params: {
+  user_id: number;
   topic?: string;
   query: string;
   research_type?: ResearchType;
@@ -694,8 +733,10 @@ export async function submitResearch(params: {
   return data;
 }
 
-export async function getResearchHistory(): Promise<ResearchQuery[]> {
-  const { data } = await api.get('/api/chatbot/research/history/');
+export async function getResearchHistory(userId: number): Promise<ResearchQuery[]> {
+  const { data } = await api.get('/api/chatbot/research/history/', {
+    params: { user_id: userId },
+  });
   return data;
 }
 ```
@@ -723,6 +764,7 @@ const RESEARCH_TYPES = [
 ```typescript
 // api/mockExam.ts
 export async function generateExam(params: {
+  user_id: number;
   subject: string;
   topic: string;
   difficulty: Difficulty;
@@ -741,10 +783,14 @@ export async function generateExam(params: {
 
 ```typescript
 // Get all exams (list)
-const { data } = await api.get<MockExamListItem[]>('/api/chatbot/mock-exam/');
+const { data } = await api.get<MockExamListItem[]>('/api/chatbot/mock-exam/', {
+  params: { user_id: userId },
+});
 
 // Get one exam with all questions
-const { data: exam } = await api.get<MockExam>(`/api/chatbot/mock-exam/${examId}/`);
+const { data: exam } = await api.get<MockExam>(`/api/chatbot/mock-exam/${examId}/`, {
+  params: { user_id: userId },
+});
 ```
 
 #### Rendering Questions by Type
@@ -811,7 +857,9 @@ function scoreExam(
 #### Delete an Exam
 
 ```typescript
-await api.delete(`/api/chatbot/mock-exam/${examId}/`);
+await api.delete(`/api/chatbot/mock-exam/${examId}/`, {
+  params: { user_id: userId },
+});
 // 204 = success, remove from UI list
 ```
 
@@ -947,8 +995,10 @@ App
 
 | Scenario | Notes |
 |----------|-------|
-| Access token expires during session | The axios interceptor auto-refreshes silently with no UX disruption |
-| Refresh token expires | User must log in again — show login page |
+| Chatbot endpoints | No token required — pass `user_id` in body (POST) or `?user_id=` query param (GET/DELETE) |
+| `user_id` missing | Backend returns `400 { "error": "user_id query parameter is required." }` (GET) or `400 { "user_id": [...] }` (POST) |
+| Admin access token expires | The axios interceptor auto-refreshes silently with no UX disruption |
+| Admin refresh token expires | Admin must log in again — show Django admin login page |
 | Admin-only routes | Hide upload UI from non-admin users; check user role on login response if customised |
 
 ### UUID Generation (session_id)
@@ -968,5 +1018,5 @@ Never use random strings — the backend validates UUID format strictly and retu
 
 ---
 
-*Alpha AI Chatbot — Frontend Developer Guide v1.1*  
-*Updated: April 8, 2026*
+*Alpha AI Chatbot — Frontend Developer Guide v1.2*  
+*Updated: April 12, 2026*
