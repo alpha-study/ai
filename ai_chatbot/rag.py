@@ -21,11 +21,15 @@ ACADEMIC_KEYWORDS = [
     'summary', 'note', 'revision', 'mock', 'entrance', 'competitive', 'scholarship',
     # Quick-action chips / intent phrases
     'study material', 'study materials', 'research note', 'research notes',
-    'question and answer', 'questions and answers', 'q&a', 'q & a',
+    'question and answer', 'questions and answers', 'questions & answers',
+    'q&a', 'q & a', 'q and a',
     'mcq', 'objective question', 'subjective question', 'descriptive',
     'help me study', 'help me learn', 'help me understand', 'explain me',
     'what should i study', 'how to study', 'learning material',
     'practice question', 'sample question', 'previous year', 'past paper',
+    # Subject abbreviations (short inputs)
+    'bio', 'phy', 'chem', 'sci', 'maths', 'eco', 'eng', 'cs', 'it',
+    'geo', 'hist', 'pol', 'soc', 'psy', 'phi', 'comm', 'acct',
 
     # Mathematics
     'math', 'algebra', 'geometry', 'calculus', 'trigonometry', 'statistics',
@@ -139,6 +143,13 @@ def is_academic_question(text: str) -> bool:
         r'\bsummarise\b', r'\bsummarize\b', r'\bsolve\b',
         r'\bcalculate\b', r'\bderive\b', r'\bprove\b', r'\blist\b',
         r'\btell me about\b', r'\bgive me\b', r'\bname the\b',
+        # Follow-up / continuation phrases
+        r'\bmore detail\b', r'\bmore details\b', r'\bmore about\b',
+        r'\belaborate\b', r'\btell me more\b',
+        r'\bexplain more\b', r'\bexplain further\b', r'\bexplain again\b',
+        r'\bgive more\b', r'\bwant more\b', r'\bneed more\b',
+        r'\bcontinue\b', r'\bgo on\b', r'\bexpand on\b',
+        r'\bin more detail\b', r'\bin detail\b',
     ]
     if any(re.search(p, q) for p in generic_patterns):
         return True
@@ -252,7 +263,20 @@ def retrieve_and_answer(
     """
     # ── 1. Sanitise & scope-check ──────────────────────────────────────────
     cleaned = strip_prompt_injections(question)
-    if not is_academic_question(cleaned):
+
+    # When there's active conversation history, only block explicit non-academic
+    # content — follow-up messages like "tell me more" / "I want more detail"
+    # don't contain academic keywords but are clearly continuations.
+    if history:
+        _q = cleaned.lower()
+        is_blocked = (
+            any(k in _q for k in NON_ACADEMIC_KEYWORDS)
+            or any(re.search(ep, _q) for ep in _ENTERTAINMENT_SIGNALS)
+        )
+    else:
+        is_blocked = not is_academic_question(cleaned)
+
+    if is_blocked:
         return (
             "I can help only for educational purposes. "
             "Please ask me something related to your studies, subjects, or general knowledge.",
