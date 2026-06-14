@@ -120,10 +120,3 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 VECTOR_DB = os.environ.get('VECTOR_DB', 'chroma')
 AI_CHAT_MODEL = os.environ.get('AI_CHAT_MODEL', 'gpt-4o-mini')
 AI_MAX_RESPONSE_TOKENS = int(os.environ.get('AI_MAX_RESPONSE_TOKENS', '512'))
-
-
-
-FORCE_SCRIPT_NAME = '/ai'
-
-STATIC_URL = '/ai/static/'
-MEDIA_URL = '/ai/media/'
