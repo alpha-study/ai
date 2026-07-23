@@ -33,6 +33,13 @@ class AskSerializer(serializers.Serializer):
     user_id    = serializers.IntegerField(required=True, min_value=1)
     session_id = serializers.UUIDField(required=True)
     question   = serializers.CharField()
+    answer_style = serializers.ChoiceField(
+        choices=['fast', 'standard', 'detailed'],
+        default='fast',
+        required=False,
+    )
+    use_kb = serializers.BooleanField(default=True, required=False)
+    max_tokens = serializers.IntegerField(min_value=64, max_value=700, required=False)
 
 
 # ── Chat History ─────────────────────────────────────────────────────────────

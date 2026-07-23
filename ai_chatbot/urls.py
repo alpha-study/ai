@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    UploadDocumentView, AskView, HistoryView, ReprocessDocumentView,
+    UploadDocumentView, AskView, AskStreamView, HistoryView, ReprocessDocumentView,
     ChatSessionListView,
     ResearchView, ResearchHistoryView,
     GenerateMockExamView, MockExamListView, MockExamDetailView,
@@ -13,6 +13,7 @@ urlpatterns = [
 
     # Chat
     path('ask/',                         AskView.as_view(),                  name='ask'),
+    path('ask/stream/',                  AskStreamView.as_view(),            name='ask-stream'),
     path('chat/sessions/',               ChatSessionListView.as_view(),      name='chat-sessions'),
     path('history/<uuid:session_id>/',   HistoryView.as_view(),              name='history'),
 

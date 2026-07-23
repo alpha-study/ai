@@ -120,7 +120,8 @@ CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', REDIS_URL)
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 VECTOR_DB = os.environ.get('VECTOR_DB', 'chroma')
 AI_CHAT_MODEL = os.environ.get('AI_CHAT_MODEL', 'gpt-4o-mini')
-AI_MAX_RESPONSE_TOKENS = int(os.environ.get('AI_MAX_RESPONSE_TOKENS', '512'))
+AI_MAX_RESPONSE_TOKENS = int(os.environ.get('AI_MAX_RESPONSE_TOKENS', '220'))
+AI_FAST_RESPONSE_TOKENS = int(os.environ.get('AI_FAST_RESPONSE_TOKENS', '180'))
 
 
 

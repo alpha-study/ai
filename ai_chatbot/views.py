@@ -1,10 +1,12 @@
+import json
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAdminUser, AllowAny
 from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.db.models import Count, OuterRef, Q, Subquery
 
 from .models import ChatSession, ChatMessage, KnowledgeDocument, MockExam, MockExamQuestion, ResearchQuery
@@ -15,7 +17,17 @@ from .serializers import (
     ResearchQuerySerializer, ResearchQueryDetailSerializer,
 )
 from .tasks import process_document
-from .rag import retrieve_and_answer, research_and_answer, generate_mock_exam, CONVERSATION_HISTORY_WINDOW
+from .rag import (
+    retrieve_and_answer,
+    stream_retrieve_and_answer,
+    research_and_answer,
+    generate_mock_exam,
+    CONVERSATION_HISTORY_WINDOW,
+)
+
+
+def sse_event(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 class UploadDocumentView(APIView):
@@ -38,6 +50,9 @@ class AskView(APIView):
         user_id    = serializer.validated_data['user_id']
         session_id = serializer.validated_data['session_id']
         question   = serializer.validated_data['question']
+        answer_style = serializer.validated_data.get('answer_style', 'fast')
+        use_kb = serializer.validated_data.get('use_kb', True)
+        max_tokens = serializer.validated_data.get('max_tokens')
         session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user_id': user_id})
 
         # ── Build conversation history from prior turns in this session ──────
@@ -59,13 +74,121 @@ class AskView(APIView):
 
         # Save the new user message, then call the RAG pipeline with history
         ChatMessage.objects.create(session=session, role='user', message=question)
-        answer, sources, tokens = retrieve_and_answer(question, history=history or None)
+        answer, sources, tokens = retrieve_and_answer(
+            question,
+            history=history or None,
+            answer_style=answer_style,
+            use_kb=use_kb,
+            max_tokens=max_tokens,
+        )
 
         ChatMessage.objects.create(
             session=session, role='assistant',
             message=question, response=answer, tokens_used=tokens,
         )
-        return Response({'answer': answer, 'sources': sources, 'tokens_used': tokens})
+        return Response({
+            'answer': answer,
+            'sources': sources,
+            'tokens_used': tokens,
+            'answer_style': answer_style,
+        })
+
+
+class AskStreamView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = AskSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user_id = serializer.validated_data['user_id']
+        session_id = serializer.validated_data['session_id']
+        question = serializer.validated_data['question']
+        answer_style = serializer.validated_data.get('answer_style', 'fast')
+        use_kb = serializer.validated_data.get('use_kb', True)
+        max_tokens = serializer.validated_data.get('max_tokens')
+        session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user_id': user_id})
+
+        prior = (
+            ChatMessage.objects
+            .filter(session=session, role='assistant')
+            .exclude(response__isnull=True)
+            .exclude(response='')
+            .order_by('-created_at')
+            .values('message', 'response')[:CONVERSATION_HISTORY_WINDOW]
+        )
+        history = []
+        for msg in reversed(prior):
+            history.append({'role': 'user', 'content': msg['message']})
+            history.append({'role': 'assistant', 'content': msg['response']})
+
+        ChatMessage.objects.create(session=session, role='user', message=question)
+
+        def event_stream():
+            final_answer = ''
+            final_sources = []
+            final_tokens = 0
+
+            yield sse_event('meta', {'answer_style': answer_style})
+
+            for event in stream_retrieve_and_answer(
+                question,
+                history=history or None,
+                answer_style=answer_style,
+                use_kb=use_kb,
+                max_tokens=max_tokens,
+            ):
+                event_type = event.get('type')
+
+                if event_type == 'delta':
+                    yield sse_event('delta', {'text': event.get('text', '')})
+                    continue
+
+                if event_type == 'error':
+                    error_text = event.get('error', 'Unable to generate answer.')
+                    ChatMessage.objects.create(
+                        session=session,
+                        role='assistant',
+                        message=question,
+                        response=error_text,
+                        tokens_used=0,
+                    )
+                    yield sse_event('error', {'error': error_text})
+                    return
+
+                if event_type == 'done':
+                    final_answer = event.get('answer', '')
+                    final_sources = event.get('sources', [])
+                    final_tokens = event.get('tokens_used', 0)
+                    ChatMessage.objects.create(
+                        session=session,
+                        role='assistant',
+                        message=question,
+                        response=final_answer,
+                        tokens_used=final_tokens,
+                    )
+                    yield sse_event('done', {
+                        'answer': final_answer,
+                        'sources': final_sources,
+                        'tokens_used': final_tokens,
+                        'answer_style': answer_style,
+                    })
+                    return
+
+            if not final_answer:
+                fallback = "I couldn't generate an answer right now."
+                ChatMessage.objects.create(
+                    session=session,
+                    role='assistant',
+                    message=question,
+                    response=fallback,
+                    tokens_used=final_tokens,
+                )
+                yield sse_event('error', {'error': fallback, 'sources': final_sources})
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
 
 
 class ChatSessionListView(APIView):

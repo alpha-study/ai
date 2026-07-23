@@ -81,6 +81,20 @@ curl -X POST http://localhost:8000/api/chatbot/ask/ \
   }'
 ```
 
+**Ask Question (Streaming):**
+```bash
+curl -N -X POST http://localhost:8000/api/chatbot/ask/stream/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 1,
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "question": "Give me information on India",
+    "answer_style": "fast",
+    "use_kb": false,
+    "max_tokens": 160
+  }'
+```
+
 **Get Chat History:**
 ```bash
 curl http://localhost:8000/api/chatbot/history/550e8400-e29b-41d4-a716-446655440000/ \
