@@ -1,12 +1,19 @@
 import uuid
+from functools import lru_cache
 from typing import List, Dict
 import chromadb
-from django.conf import settings
 
+
+@lru_cache(maxsize=1)
 def get_client():
     """Get Chroma client with persistent storage."""
     # Use the newer client initialization (v0.4+)
     return chromadb.PersistentClient(path="./chroma_db")
+
+
+@lru_cache(maxsize=1)
+def get_query_collection():
+    return get_client().get_collection(name='alpha_knowledge')
 
 def upsert_chunks(chunks: List[str], metadatas: List[Dict], embeddings: List[List[float]] = None) -> List[str]:
     """Upsert chunks into Chroma collection and return list of vector ids."""
@@ -21,6 +28,7 @@ def upsert_chunks(chunks: List[str], metadatas: List[Dict], embeddings: List[Lis
         )
     except Exception as e:
         # If collection exists with wrong config, delete and recreate
+        get_query_collection.cache_clear()
         try:
             client.delete_collection(name='alpha_knowledge')
         except:
@@ -30,6 +38,7 @@ def upsert_chunks(chunks: List[str], metadatas: List[Dict], embeddings: List[Lis
             metadata={"hnsw:space": "cosine"},
             embedding_function=None  # Critical: We provide our own 1536-dim embeddings
         )
+        get_query_collection.cache_clear()
 
     ids = [str(uuid.uuid4()) for _ in chunks]
     
@@ -52,9 +61,8 @@ def query_chunks(query_embedding: List[float], top_k: int = 5):
 
     Returns a list of dicts: {'id','document_id','chunk_text','metadata','distance'}
     """
-    client = get_client()
     try:
-        collection = client.get_collection(name='alpha_knowledge')
+        collection = get_query_collection()
     except Exception:
         return []
 

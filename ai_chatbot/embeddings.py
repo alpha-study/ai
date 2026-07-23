@@ -1,7 +1,6 @@
-import os
 from typing import List
-from openai import OpenAI
 from django.conf import settings
+from .openai_client import get_openai_client
 
 def compute_embeddings(texts: List[str]) -> List[List[float]]:
     """Compute embeddings for a list of texts using OpenAI embeddings.
@@ -11,7 +10,7 @@ def compute_embeddings(texts: List[str]) -> List[List[float]]:
     if not settings.OPENAI_API_KEY:
         raise RuntimeError('OPENAI_API_KEY not configured')
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = get_openai_client()
     
     # batch the embedding requests (OpenAI supports batching)
     resp = client.embeddings.create(input=texts, model='text-embedding-3-small')

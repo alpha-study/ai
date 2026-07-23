@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAdminUser, AllowAny
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
+from django.db.models import Count, OuterRef, Q, Subquery
 
 from .models import ChatSession, ChatMessage, KnowledgeDocument, MockExam, MockExamQuestion, ResearchQuery
 from .serializers import (
@@ -47,13 +48,14 @@ class AskView(APIView):
             .filter(session=session, role='assistant')
             .exclude(response__isnull=True)
             .exclude(response='')
-            .order_by('-created_at')[:CONVERSATION_HISTORY_WINDOW]
+            .order_by('-created_at')
+            .values('message', 'response')[:CONVERSATION_HISTORY_WINDOW]
         )
         # Reverse so history is oldest-first (chronological)
         history = []
         for msg in reversed(prior):
-            history.append({'role': 'user',      'content': msg.message})
-            history.append({'role': 'assistant', 'content': msg.response})
+            history.append({'role': 'user',      'content': msg['message']})
+            history.append({'role': 'assistant', 'content': msg['response']})
 
         # Save the new user message, then call the RAG pipeline with history
         ChatMessage.objects.create(session=session, role='user', message=question)
@@ -78,7 +80,21 @@ class ChatSessionListView(APIView):
         user_id = request.query_params.get('user_id')
         if not user_id:
             return Response({'error': 'user_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        sessions = ChatSession.objects.filter(user_id=user_id).order_by('-updated_at')
+        last_user_message = (
+            ChatMessage.objects
+            .filter(session=OuterRef('pk'), role='user')
+            .order_by('-created_at')
+            .values('message')[:1]
+        )
+        sessions = (
+            ChatSession.objects
+            .filter(user_id=user_id)
+            .annotate(
+                assistant_message_count=Count('messages', filter=Q(messages__role='assistant')),
+                last_user_message=Subquery(last_user_message),
+            )
+            .order_by('-updated_at')
+        )
         serializer = ChatSessionSerializer(sessions, many=True)
         return Response({
             'count':    sessions.count(),

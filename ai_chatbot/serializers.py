@@ -55,10 +55,17 @@ class ChatSessionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_message_count(self, obj):
+        count = getattr(obj, 'assistant_message_count', None)
+        if count is not None:
+            return count
         # Only count assistant turns (one per Q-A pair)
         return obj.messages.filter(role='assistant').count()
 
     def get_last_message(self, obj):
+        annotated_text = getattr(obj, 'last_user_message', None)
+        if annotated_text:
+            return annotated_text[:120] + '...' if len(annotated_text) > 120 else annotated_text
+
         last = obj.messages.filter(role='user').order_by('-created_at').first()
         if last:
             text = last.message

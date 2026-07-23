@@ -4,6 +4,7 @@ from django.conf import settings
 from openai import OpenAI
 from .embeddings import compute_embeddings
 from .vector_db import query_chunks
+from .openai_client import get_openai_client
 
 # Relevance threshold for cosine distance (lower = more similar).
 # Hits with distance above this are considered off-topic from the KB.
@@ -297,7 +298,7 @@ def retrieve_and_answer(
         except Exception:
             hits = []
 
-    client   = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = get_openai_client()
     max_tokens = min(getattr(settings, 'AI_MAX_RESPONSE_TOKENS', 1024), 2048)
 
     # ── 3. PATH A: Knowledge-Base answer ──────────────────────────────────
@@ -541,7 +542,7 @@ def research_and_answer(
         f"Please provide a detailed, structured academic response."
     )
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = get_openai_client()
     try:
         answer, tokens_used = _call_llm(client, system_prompt, user_message, max_tokens)
     except Exception as e:
@@ -666,7 +667,7 @@ def generate_mock_exam(
         f"Return ONLY the JSON array with {num_questions} question objects."
     )
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    client = get_openai_client()
     max_tokens = min(300 * num_questions, 4096)
 
     try:
