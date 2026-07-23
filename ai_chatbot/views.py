@@ -17,6 +17,7 @@ from .serializers import (
     ResearchQuerySerializer, ResearchQueryDetailSerializer,
 )
 from .tasks import process_document
+from .suggestions import build_followup_suggestions
 from .rag import (
     retrieve_and_answer,
     stream_retrieve_and_answer,
@@ -50,9 +51,6 @@ class AskView(APIView):
         user_id    = serializer.validated_data['user_id']
         session_id = serializer.validated_data['session_id']
         question   = serializer.validated_data['question']
-        answer_style = serializer.validated_data.get('answer_style', 'fast')
-        use_kb = serializer.validated_data.get('use_kb', True)
-        max_tokens = serializer.validated_data.get('max_tokens')
         session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user_id': user_id})
 
         # ── Build conversation history from prior turns in this session ──────
@@ -77,20 +75,18 @@ class AskView(APIView):
         answer, sources, tokens = retrieve_and_answer(
             question,
             history=history or None,
-            answer_style=answer_style,
-            use_kb=use_kb,
-            max_tokens=max_tokens,
         )
 
         ChatMessage.objects.create(
             session=session, role='assistant',
             message=question, response=answer, tokens_used=tokens,
         )
+        suggestions = build_followup_suggestions(question, answer, sources)
         return Response({
             'answer': answer,
             'sources': sources,
             'tokens_used': tokens,
-            'answer_style': answer_style,
+            'suggestions': suggestions,
         })
 
 
@@ -103,9 +99,6 @@ class AskStreamView(APIView):
         user_id = serializer.validated_data['user_id']
         session_id = serializer.validated_data['session_id']
         question = serializer.validated_data['question']
-        answer_style = serializer.validated_data.get('answer_style', 'fast')
-        use_kb = serializer.validated_data.get('use_kb', True)
-        max_tokens = serializer.validated_data.get('max_tokens')
         session, _ = ChatSession.objects.get_or_create(id=session_id, defaults={'user_id': user_id})
 
         prior = (
@@ -128,14 +121,11 @@ class AskStreamView(APIView):
             final_sources = []
             final_tokens = 0
 
-            yield sse_event('meta', {'answer_style': answer_style})
+            yield sse_event('meta', {'stream': True})
 
             for event in stream_retrieve_and_answer(
                 question,
                 history=history or None,
-                answer_style=answer_style,
-                use_kb=use_kb,
-                max_tokens=max_tokens,
             ):
                 event_type = event.get('type')
 
@@ -159,6 +149,7 @@ class AskStreamView(APIView):
                     final_answer = event.get('answer', '')
                     final_sources = event.get('sources', [])
                     final_tokens = event.get('tokens_used', 0)
+                    suggestions = build_followup_suggestions(question, final_answer, final_sources)
                     ChatMessage.objects.create(
                         session=session,
                         role='assistant',
@@ -170,7 +161,7 @@ class AskStreamView(APIView):
                         'answer': final_answer,
                         'sources': final_sources,
                         'tokens_used': final_tokens,
-                        'answer_style': answer_style,
+                        'suggestions': suggestions,
                     })
                     return
 

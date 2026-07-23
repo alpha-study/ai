@@ -88,11 +88,19 @@ curl -N -X POST http://localhost:8000/api/chatbot/ask/stream/ \
   -d '{
     "user_id": 1,
     "session_id": "550e8400-e29b-41d4-a716-446655440000",
-    "question": "Give me information on India",
-    "answer_style": "fast",
-    "use_kb": false,
-    "max_tokens": 160
+    "question": "Give me information on India"
   }'
+```
+
+Both chat endpoints include follow-up suggestions. Render them as quick-reply chips:
+```json
+{
+  "suggestions": [
+    "Want to know more about Narendra Modi?",
+    "Want a timeline of Narendra Modi's political career?",
+    "Want to understand the role of Prime Minister of India?"
+  ]
+}
 ```
 
 **Get Chat History:**

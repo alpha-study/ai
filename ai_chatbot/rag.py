@@ -174,6 +174,8 @@ def sanitize_response(text: str) -> str:
     text = re.sub(r'(?i)\bopenai\b', 'Alpha AI', text)
     text = re.sub(r'(?i)\bchatgpt\b', 'Alpha AI', text)
     text = re.sub(r'(?i)\bgpt-\d+\b', 'Alpha AI', text)
+    text = re.sub(r'(?i)\bas of my last (knowledge )?update(?: in [A-Za-z0-9 ,]+)?,?\s*', '', text)
+    text = re.sub(r'(?i)\bas of my knowledge cutoff(?: in [A-Za-z0-9 ,]+)?,?\s*', '', text)
     return text
 
 
@@ -200,52 +202,8 @@ def strip_prompt_injections(text: str) -> str:
     return text.strip()
 
 
-# Number of previous Q-A exchanges to include as conversation context.
-# Keep this small because every turn is sent back to the LLM.
-CONVERSATION_HISTORY_WINDOW = 3  # last 3 turns (= 6 messages)
-
-
-ANSWER_STYLE_INSTRUCTIONS = {
-    'fast': (
-        "Answer in 3-5 numbered steps. Keep each step to one short sentence. "
-        "Stay under 120 words. No long intro."
-    ),
-    'standard': (
-        "Answer in clear numbered steps. Keep it concise, usually under 220 words."
-    ),
-    'detailed': (
-        "Answer step by step with helpful detail, examples, and brief explanations."
-    ),
-}
-
-
-KB_SYSTEM_PROMPT = (
-    "You are Alpha AI, a warm academic tutor. Use only the provided knowledge-base "
-    "context. If the context only partly answers the question, say that briefly. "
-    "Do not mention OpenAI, ChatGPT, or any external AI system."
-)
-
-
-GENERAL_SYSTEM_PROMPT = (
-    "You are Alpha AI, a warm academic tutor. Answer only educational, academic, "
-    "or general-knowledge questions. If the request is off-topic, politely say you "
-    "only help with studies and learning. Do not mention OpenAI, ChatGPT, or any "
-    "external AI system. End valid answers with: (Source: Alpha Academic Knowledge Base)"
-)
-
-
-def _style_instruction(answer_style: str) -> str:
-    return ANSWER_STYLE_INSTRUCTIONS.get(answer_style, ANSWER_STYLE_INSTRUCTIONS['fast'])
-
-
-def _response_token_limit(answer_style: str, max_tokens: int = None) -> int:
-    if max_tokens is not None:
-        return min(max_tokens, 700)
-    if answer_style == 'fast':
-        return min(getattr(settings, 'AI_FAST_RESPONSE_TOKENS', 180), 256)
-    if answer_style == 'detailed':
-        return min(max(getattr(settings, 'AI_MAX_RESPONSE_TOKENS', 220), 420), 700)
-    return min(getattr(settings, 'AI_MAX_RESPONSE_TOKENS', 220), 512)
+# Number of previous Q-A exchanges to include as conversation context
+CONVERSATION_HISTORY_WINDOW = 6  # last 6 turns (= 12 messages)
 
 
 def _call_llm(
@@ -270,7 +228,7 @@ def _call_llm(
     resp = client.chat.completions.create(
         model=getattr(settings, 'AI_CHAT_MODEL', 'gpt-4o-mini'),
         messages=messages,
-        temperature=0.3,
+        temperature=0.7,
         max_tokens=max_tokens,
     )
     answer = resp.choices[0].message.content.strip()
@@ -280,11 +238,8 @@ def _call_llm(
 
 def _prepare_chat_request(
     question: str,
-    top_k: int = 3,
+    top_k: int = 5,
     history: List[dict] = None,
-    answer_style: str = 'fast',
-    use_kb: bool = True,
-    max_tokens: int = None,
 ) -> dict:
     """Build the LLM request payload shared by regular and streaming chat."""
     cleaned = strip_prompt_injections(question)
@@ -309,12 +264,10 @@ def _prepare_chat_request(
             'tokens_used': 0,
         }
 
-    q_emb = None
-    if use_kb:
-        try:
-            q_emb = compute_embeddings([cleaned])[0]
-        except Exception:
-            q_emb = None
+    try:
+        q_emb = compute_embeddings([cleaned])[0]
+    except Exception:
+        q_emb = None
 
     hits = []
     if q_emb is not None:
@@ -323,8 +276,7 @@ def _prepare_chat_request(
         except Exception:
             hits = []
 
-    style_instruction = _style_instruction(answer_style)
-    token_limit = _response_token_limit(answer_style, max_tokens)
+    token_limit = min(getattr(settings, 'AI_MAX_RESPONSE_TOKENS', 1024), 2048)
 
     if _has_relevant_kb_hits(hits):
         context_parts = []
@@ -341,15 +293,22 @@ def _prepare_chat_request(
             )
             sources.append(source)
             snippet = hit.get('chunk_text', '')
-            if len(snippet) > 900:
-                snippet = snippet[:900] + '...'
+            if len(snippet) > 1500:
+                snippet = snippet[:1500] + '...'
             context_parts.append(f"[{source}]:\n{snippet}")
 
         context = "\n\n---\n\n".join(context_parts)
-        if len(context) > 2400:
-            context = context[:2400] + '\n...'
+        if len(context) > 4000:
+            context = context[:4000] + '\n...'
 
-        system_prompt = f"{KB_SYSTEM_PROMPT}\n\n{style_instruction}"
+        system_prompt = (
+            "You are Alpha AI - a knowledgeable, warm tutor who helps students learn. "
+            "Use the provided knowledge-base material to answer the question. "
+            "Start with the core idea in plain language, then add helpful explanation. "
+            "If the material only partly covers the question, say that briefly. "
+            "Do not make up facts that are not in the material. "
+            "Do not mention OpenAI, ChatGPT, knowledge cutoffs, last updates, or any other AI system."
+        )
         user_message = (
             f"KNOWLEDGE BASE CONTEXT:\n{context}\n\n"
             f"STUDENT QUESTION:\n{cleaned}\n\n"
@@ -357,7 +316,16 @@ def _prepare_chat_request(
         )
         sources = list(dict.fromkeys(sources))
     else:
-        system_prompt = f"{GENERAL_SYSTEM_PROMPT}\n\n{style_instruction}"
+        system_prompt = (
+            "You are Alpha AI - a knowledgeable, warm tutor who helps students learn. "
+            "Answer from your general academic knowledge because the question was not found "
+            "in the uploaded documents. Keep the response educational and useful. "
+            "You can cover school subjects, academic topics, general knowledge, and entrance exams. "
+            "Do not help with cinema, celebrity gossip, shopping, travel booking, dating advice, memes, "
+            "or other non-academic topics. Do not mention OpenAI, ChatGPT, knowledge cutoffs, "
+            "last updates, or any other AI system. "
+            "End every valid answer with: '(Source: Alpha Academic Knowledge Base)'"
+        )
         user_message = f"STUDENT QUESTION:\n{cleaned}\n\nANSWER:"
         sources = ['General Academic Knowledge']
 
@@ -376,20 +344,14 @@ def _prepare_chat_request(
 
 def stream_retrieve_and_answer(
     question: str,
-    top_k: int = 3,
+    top_k: int = 5,
     history: List[dict] = None,
-    answer_style: str = 'fast',
-    use_kb: bool = True,
-    max_tokens: int = None,
 ):
     """Yield chat response events as soon as OpenAI streams tokens."""
     request_data = _prepare_chat_request(
         question,
         top_k=top_k,
         history=history,
-        answer_style=answer_style,
-        use_kb=use_kb,
-        max_tokens=max_tokens,
     )
 
     if 'blocked_answer' in request_data:
@@ -410,7 +372,7 @@ def stream_retrieve_and_answer(
         stream = request_data['client'].chat.completions.create(
             model=getattr(settings, 'AI_CHAT_MODEL', 'gpt-4o-mini'),
             messages=request_data['messages'],
-            temperature=0.3,
+            temperature=0.7,
             max_tokens=request_data['max_tokens'],
             stream=True,
             stream_options={'include_usage': True},
@@ -446,11 +408,8 @@ def stream_retrieve_and_answer(
 
 def retrieve_and_answer(
     question: str,
-    top_k: int = 3,
+    top_k: int = 5,
     history: List[dict] = None,
-    answer_style: str = 'fast',
-    use_kb: bool = True,
-    max_tokens: int = None,
 ) -> Tuple[str, List[str], int]:
     """
     Two-path RAG pipeline with optional conversation history.
@@ -500,7 +459,7 @@ def retrieve_and_answer(
 
     # ── 2. Compute query embedding ─────────────────────────────────────────
     try:
-        q_emb = compute_embeddings([cleaned])[0] if use_kb else None
+        q_emb = compute_embeddings([cleaned])[0]
     except Exception:
         q_emb = None
 
@@ -512,8 +471,7 @@ def retrieve_and_answer(
             hits = []
 
     client = get_openai_client()
-    max_tokens = _response_token_limit(answer_style, max_tokens)
-    style_instruction = _style_instruction(answer_style)
+    max_tokens = min(getattr(settings, 'AI_MAX_RESPONSE_TOKENS', 1024), 2048)
 
     # ── 3. PATH A: Knowledge-Base answer ──────────────────────────────────
     if _has_relevant_kb_hits(hits):
@@ -575,9 +533,8 @@ def retrieve_and_answer(
             "If the material only partly covers the question, answer what you can and honestly say something like "
             "'Beyond this, your textbook or teacher would have the full picture.'\n\n"
 
-            "Do NOT make up facts that aren't in the material below. Do NOT mention OpenAI, ChatGPT, or any other AI system."
+            "Do NOT make up facts that aren't in the material below. Do NOT mention OpenAI, ChatGPT, knowledge cutoffs, last updates, or any other AI system."
         )
-        system_prompt = f"{KB_SYSTEM_PROMPT}\n\n{style_instruction}"
         user_message = (
             f"KNOWLEDGE BASE CONTEXT:\n{context}\n\n"
             f"STUDENT QUESTION:\n{cleaned}\n\n"
@@ -648,10 +605,9 @@ def retrieve_and_answer(
         "'Hmm, that one's outside my zone — I'm all about studies and learning! "
         "Got anything educational you'd like help with?'\n\n"
 
-        "Do NOT mention OpenAI, ChatGPT, or any other AI system.\n"
+        "Do NOT mention OpenAI, ChatGPT, knowledge cutoffs, last updates, or any other AI system.\n"
         "End every valid answer with: '(Source: Alpha Academic Knowledge Base)'"
     )
-    system_prompt = f"{GENERAL_SYSTEM_PROMPT}\n\n{style_instruction}"
     user_message = f"STUDENT QUESTION:\n{cleaned}\n\nANSWER:"
 
     try:
